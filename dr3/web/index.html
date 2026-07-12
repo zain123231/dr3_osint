@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DR3 OSINT — AI-Powered Digital Intelligence Platform</title>
+    <meta name="description" content="DR3 OSINT Intelligence Platform — AI-powered identity investigation across thousands of platforms.">
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0e17'/><text x='16' y='22' text-anchor='middle' fill='%2300d4ff' font-family='sans-serif' font-weight='bold' font-size='16'>D3</text></svg>">
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav class="nav">
+    <div class="nav-inner">
+        <a href="/" class="nav-brand">
+            <div class="nav-logo">D3</div>
+            <div>
+                <div class="nav-title">DR3 OSINT</div>
+                <div class="nav-subtitle">Intelligence Platform</div>
+            </div>
+        </a>
+        <div class="nav-status">
+            <div style="display:flex;align-items:center;gap:0.5rem">
+                <div class="status-dot"></div>
+                <span class="status-text">System Online</span>
+            </div>
+            <div class="nav-badge">v2.0.0</div>
+        </div>
+    </div>
+</nav>
+
+<div class="app-container">
+
+    <!-- ── Hero / Search ── -->
+    <section class="hero" id="hero-section">
+        <h1 class="hero-title">Digital Intelligence Platform</h1>
+        <p class="hero-subtitle">
+            AI-powered identity investigation across thousands of platforms.
+            Evidence-based analysis. Confidence-scored results.
+        </p>
+
+        <div class="search-container">
+            <div class="search-box">
+                <div class="search-icon">🔍</div>
+                <input
+                    type="text"
+                    class="search-input"
+                    id="search-input"
+                    placeholder="Enter username to investigate..."
+                    autocomplete="off"
+                    spellcheck="false"
+                    maxlength="64"
+                >
+                <button class="search-btn" id="search-btn">
+                    Investigate
+                </button>
+            </div>
+
+            <div class="options-row">
+                <div class="option-chip">
+                    <span>📊</span>
+                    <span>Sites:</span>
+                    <select id="option-sites">
+                        <option value="100">100</option>
+                        <option value="300">300</option>
+                        <option value="500" selected>500</option>
+                        <option value="1000">1000</option>
+                        <option value="99999">All</option>
+                    </select>
+                </div>
+                <div class="option-chip" id="chip-ai" style="cursor:default;">
+                    <span>🧠</span>
+                    <span>AI:</span>
+                    <span id="stat-ai" class="stat-value amber" style="font-size:0.8rem;">Loading...</span>
+                </div>
+                <div class="option-chip" style="cursor:default;">
+                    <span>🌐</span>
+                    <span>DB:</span>
+                    <span id="stat-sites" style="color:var(--accent);font-family:'JetBrains Mono',monospace;">...</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Progress ── -->
+    <section class="progress-section" id="progress-section">
+        <div class="progress-card">
+            <div class="progress-header">
+                <span class="progress-title">🔍 Investigation in Progress</span>
+                <span class="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar-outer">
+                <div class="progress-bar-inner"></div>
+            </div>
+            <p class="progress-message">Initializing search engine...</p>
+            <div class="progress-stats"></div>
+        </div>
+    </section>
+
+    <!-- ── Results ── -->
+    <section class="results-section" id="results-section">
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-value cyan" id="result-checked">0</div>
+                <div class="stat-label">Sites Checked</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value green" id="result-found">0</div>
+                <div class="stat-label">Accounts Found</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value green" id="result-confirmed">0</div>
+                <div class="stat-label">Confirmed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value amber" id="result-confidence">0%</div>
+                <div class="stat-label">Avg Confidence</div>
+            </div>
+        </div>
+
+        <!-- Executive Summary -->
+        <div class="summary-card animate-fade-in">
+            <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.5rem;">Executive Summary</div>
+            <div class="summary-text" id="exec-summary">—</div>
+        </div>
+
+        <!-- Analysis Cards -->
+        <div class="section-header">
+            <h2 class="section-title">🧠 Intelligence Analysis</h2>
+            <span id="search-duration" class="nav-badge"></span>
+        </div>
+        <div class="analysis-grid" id="analysis-grid"></div>
+
+        <!-- Profiles -->
+        <div class="section-header">
+            <h2 class="section-title">👤 Detected Accounts</h2>
+            <div class="section-actions">
+                <button class="btn" id="export-json">📄 JSON</button>
+                <button class="btn" id="export-html">📊 HTML Report</button>
+                <button class="btn btn-primary" id="new-search">🔍 New Search</button>
+            </div>
+        </div>
+
+        <div class="profiles-grid" id="profiles-container"></div>
+
+        <!-- Next Steps -->
+        <div class="section-header">
+            <h2 class="section-title">📋 Suggested Next Steps</h2>
+        </div>
+        <div class="next-steps">
+            <ul id="next-steps-list"></ul>
+        </div>
+
+    </section>
+
+</div>
+
+<!-- ── Footer ── -->
+<footer class="app-footer">
+    <p>DR3 OSINT Intelligence Platform v2.0.0 — Built with precision for professional OSINT investigations</p>
+    <p style="margin-top:0.5rem;">Powered by <a href="https://t.me/DR3IQ" target="_blank">DR3</a></p>
+</footer>
+
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>
