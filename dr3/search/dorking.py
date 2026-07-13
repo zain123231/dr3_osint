@@ -1,12 +1,17 @@
 """
 DR3 OSINT — Deep Search Engine (Dorking)
-Provides fallback searching via DuckDuckGo for hard targets like Instagram/LinkedIn.
+Provides fallback searching via Bing for hard targets like Instagram/LinkedIn.
+
+Yahoo: DEAD (returns HTTP 500 on all requests as of 2025+).
+DuckDuckGo HTML: BLOCKED (returns CAPTCHA / anomaly challenge on automated requests).
+Bing: WORKING — primary and only engine used.
 """
 
 import asyncio
 import logging
 import random
-from typing import Optional, List
+import re
+from typing import Optional
 from urllib.parse import quote
 
 import aiohttp
@@ -17,14 +22,18 @@ from ..core.models import SiteConfig, CheckResult
 
 logger = logging.getLogger("dr3.dorking")
 
+
 class DorkingEngine:
-    """Uses Search Engine Dorks to bypass WAFs for hard targets."""
+    """Uses Search Engine Dorks via Bing to bypass WAFs for hard targets."""
+
+    BING_URL = "https://www.bing.com/search"
+    MAX_RETRIES = 2
+    RETRY_BASE_DELAY = 2.0  # seconds
 
     def __init__(self, timeout: int = 15):
         self.timeout = timeout
-        self.base_url = "https://search.yahoo.com/search"
-        self._semaphore = asyncio.Semaphore(2)  # Limit concurrent dorks to prevent 500 errors
-        # We only apply Dorking to known hard targets to save time and avoid IP bans
+        self._semaphore = asyncio.Semaphore(2)  # Limit concurrent dorks
+        # We only apply Dorking to known hard targets to save time
         self.hard_targets = {
             "instagram", "instagram.com",
             "linkedin", "linkedin.com",
@@ -39,70 +48,140 @@ class DorkingEngine:
         """Check if the site is a known hard target."""
         name_lower = site.name.lower()
         url_main_lower = site.url_main.lower()
-        
+
         for target in self.hard_targets:
             if target in name_lower or target in url_main_lower:
                 return True
         return False
 
+    def _build_headers(self) -> dict:
+        """Build realistic browser headers."""
+        return {
+            "User-Agent": random.choice(DEFAULT_USER_AGENTS),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+
+    async def _fetch_with_retry(self, session: aiohttp.ClientSession, url: str,
+                                 params: dict, headers: dict,
+                                 site_name: str) -> Optional[str]:
+        """Fetch a URL with retry and exponential backoff."""
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                async with session.get(url, params=params, headers=headers) as response:
+                    if response.status == 200:
+                        return await response.text()
+                    elif response.status == 429:
+                        delay = self.RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0.5, 1.5)
+                        logger.warning(
+                            f"Dorking: Bing rate-limited (429) for {site_name}, "
+                            f"retrying in {delay:.1f}s (attempt {attempt + 1}/{self.MAX_RETRIES + 1})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    elif response.status >= 500:
+                        delay = self.RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0.5, 1.5)
+                        logger.warning(
+                            f"Dorking: Bing returned {response.status} for {site_name}, "
+                            f"retrying in {delay:.1f}s (attempt {attempt + 1}/{self.MAX_RETRIES + 1})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        logger.warning(f"Dorking: Bing returned status {response.status} for {site_name}")
+                        return None
+            except asyncio.TimeoutError:
+                logger.debug(f"Dorking: Bing timed out for {site_name} (attempt {attempt + 1})")
+                if attempt < self.MAX_RETRIES:
+                    await asyncio.sleep(self.RETRY_BASE_DELAY)
+                    continue
+            except Exception as e:
+                logger.debug(f"Dorking: Bing error for {site_name}: {e}")
+                return None
+
+        logger.warning(f"Dorking: Bing failed after {self.MAX_RETRIES + 1} attempts for {site_name}")
+        return None
+
+    def _check_results(self, html_text: str, domain: str, username: str) -> bool:
+        """
+        Analyze Bing search results HTML to determine if a profile was found.
+
+        Uses multiple detection methods:
+        1. href links containing domain + username
+        2. <cite> elements (Bing shows URLs in these)
+        3. Proximity check: domain and username appear near each other in text
+        """
+        username_lower = username.lower()
+        domain_lower = domain.lower()
+
+        # Method 1: Look for links containing the domain and username
+        links = re.findall(r'href="(https?://[^"]+)"', html_text)
+        for link in links:
+            link_lower = link.lower()
+            if domain_lower in link_lower and username_lower in link_lower:
+                return True
+
+        # Method 2: Check <cite> elements (Bing shows result URLs here)
+        cites = re.findall(r'<cite[^>]*>(.*?)</cite>', html_text, re.DOTALL)
+        for cite in cites:
+            cite_lower = cite.lower()
+            if domain_lower in cite_lower and username_lower in cite_lower:
+                return True
+
+        # Method 3: Check if domain and username co-occur in the page text
+        # This catches cases where Bing renders the URL in snippets or titles
+        text_lower = html_text.lower()
+        if domain_lower in text_lower and username_lower in text_lower:
+            # Verify they appear in a result context (not just in the query echo)
+            # Look for them appearing near each other (within 200 chars)
+            for match in re.finditer(re.escape(domain_lower), text_lower):
+                start = max(0, match.start() - 100)
+                end = min(len(text_lower), match.end() + 200)
+                nearby_text = text_lower[start:end]
+                if username_lower in nearby_text:
+                    return True
+
+        return False
+
     async def fallback_check(self, site: SiteConfig, username: str) -> Optional[CheckResult]:
-        """Perform a dork search if the site is a hard target."""
+        """Perform a dork search via Bing if the site is a hard target."""
         if not self._is_hard_target(site):
             return None
 
         logger.info(f"Initiating Deep Search (Dorking) for {site.name} -> {username}")
-        
+
         # Build Dork Query
         domain = site.url_main.replace("https://", "").replace("http://", "").strip("/")
         if "www." in domain:
             domain = domain.replace("www.", "")
-            
-        dork = f"site:{domain} \"{username}\""
-        
-        headers = {
-            "User-Agent": random.choice(DEFAULT_USER_AGENTS),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        
-        params = {"p": dork}
-        
+
+        dork = f'site:{domain} "{username}"'
+        expected_url = site.url.replace("{username}", username)
+
         try:
-            # Wait a random bit to spread out requests
-            await asyncio.sleep(random.uniform(0.5, 3.0))
-            
+            # Delay between requests to avoid rate limiting
+            await asyncio.sleep(random.uniform(1.0, 2.5))
+
             async with self._semaphore:
                 async with aiohttp.ClientSession(
                     timeout=aiohttp.ClientTimeout(total=self.timeout)
                 ) as session:
-                    async with session.get(self.base_url, params=params, headers=headers) as response:
-                        if response.status != 200:
-                            logger.warning(f"Dorking Engine: Yahoo returned status {response.status} for {site.name}")
-                            return None
-                            
-                        html_text = await response.text()
-                    
-                    # Very simple parsing: look for the expected URL pattern in the search results
-                    expected_path = f"/{username}"
-                    expected_url = site.url.replace("{username}", username)
-                    
-                    # We check if the search results contain a link to the profile
-                    import re
-                    # Look for links in the search results
-                    links = re.findall(r'href="([^"]+)"', html_text)
-                    
-                    found = False
-                    for link in links:
-                        # Clean up the link (DDG sometimes redirects)
-                        if domain in link.lower() and username.lower() in link.lower():
-                            # Strong indication
-                            found = True
-                            break
-                            
-                    # Alternatively, check if the exact URL or a close variation is present in snippet text
-                    if not found and expected_path.lower() in html_text.lower() and domain in html_text.lower():
-                        found = True
-                        
+                    headers = self._build_headers()
+                    params = {"q": dork}
+
+                    html_text = await self._fetch_with_retry(
+                        session, self.BING_URL, params, headers, site.name
+                    )
+
+                    if html_text is None:
+                        return None
+
+                    found = self._check_results(html_text, domain, username)
+
                     if found:
                         logger.info(f"Deep Search found match for {username} on {site.name}")
                         return CheckResult(
@@ -118,7 +197,6 @@ class DorkingEngine:
                         )
                     else:
                         logger.debug(f"Deep Search found NO match for {username} on {site.name}")
-                        # Return AVAILABLE instead of UNKNOWN because we thoroughly checked via search engine
                         return CheckResult(
                             site_name=site.name,
                             url=expected_url,
