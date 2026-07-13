@@ -223,7 +223,26 @@ class SearchEngine:
             nonlocal checked
             async with semaphore:
                 try:
-                    result = await self._checker.check_site(site, username)
+                    # SPECIAL CASE: Instagram and other SPA hard targets
+                    # These sites always return HTTP 200 with generic JS payloads,
+                    # so standard HTTP checking is useless. We bypass it and force Dorking.
+                    if self._dorking._is_hard_target(site):
+                        logger.debug(f"Special case triggered: Forcing Dorking for {site.name}")
+                        fallback_result = await self._dorking.fallback_check(site, username)
+                        if fallback_result:
+                            result = fallback_result
+                        else:
+                            # If dorking completely fails to execute, return as ERROR or AVAILABLE
+                            result = CheckResult(
+                                site_name=site.name,
+                                url=site.url.replace("{username}", username),
+                                status=CheckStatus.AVAILABLE,
+                                url_main=site.url_main,
+                                tags=site.tags,
+                                fallback_used=True
+                            )
+                    else:
+                        result = await self._checker.check_site(site, username)
                 except Exception as e:
                     logger.debug(f"Error checking {site.name}: {e}")
                     result = CheckResult(
@@ -234,12 +253,6 @@ class SearchEngine:
                         error_message=str(e),
                         tags=site.tags,
                     )
-
-                # Fallback to Dorking if not found and site is a hard target
-                if not result.is_found and self._dorking._is_hard_target(site):
-                    fallback_result = await self._dorking.fallback_check(site, username)
-                    if fallback_result and fallback_result.is_found:
-                        result = fallback_result
 
                 checked += 1
                 if progress_callback and checked % 10 == 0:

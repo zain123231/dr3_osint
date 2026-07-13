@@ -66,7 +66,7 @@ function startSearch() {
     $('#search-btn').disabled = true;
 
     // Get options
-    const topSites = $('#option-sites')?.value || 500;
+    const topSites = $('#option-sites')?.value || 3000;
     const tags = [];
 
     // Show progress, hide results
