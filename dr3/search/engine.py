@@ -5,11 +5,12 @@ Orchestrates the multi-stage search pipeline.
 
 import asyncio
 import logging
+import random
 import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
-from ..core.constants import BAD_USERNAME_CHARS
+from ..core.constants import BAD_USERNAME_CHARS, DEFAULT_USER_AGENTS
 from ..core.enums import CheckStatus, SearchPhase
 from ..core.models import CheckResult, IdentityReport, ProfileData, SearchProgress, SiteConfig
 from .checker import HttpChecker
@@ -224,9 +225,62 @@ class SearchEngine:
             async with semaphore:
                 try:
                     # SPECIAL CASE: Instagram and other SPA hard targets
-                    # These sites always return HTTP 200 with generic JS payloads,
-                    # so standard HTTP checking is useless. We bypass it and force Dorking.
-                    if self._dorking._is_hard_target(site):
+                    if site.name.lower() in ("instagram", "instagram.com"):
+                        logger.debug(f"Special case triggered: Checking Instagram API for {username}")
+                        session = await self._checker._get_session()
+                        api_url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={username}"
+                        headers = {
+                            "User-Agent": random.choice(DEFAULT_USER_AGENTS),
+                            "X-IG-App-ID": "936619743392459",
+                            "Accept": "*/*"
+                        }
+                        
+                        api_status = None
+                        try:
+                            async with session.get(api_url, headers=headers, timeout=10) as response:
+                                if response.status == 200:
+                                    try:
+                                        data = await response.json()
+                                        if data and data.get("data", {}).get("user"):
+                                            api_status = CheckStatus.CLAIMED
+                                        else:
+                                            api_status = CheckStatus.AVAILABLE
+                                    except Exception:
+                                        api_status = None
+                                elif response.status == 404:
+                                    api_status = CheckStatus.AVAILABLE
+                                else:
+                                    # 429, 401, 500 etc -> blocked/uncertain, so we fall back to Dorking
+                                    api_status = None
+                        except Exception as e:
+                            logger.debug(f"Instagram API request error: {e}")
+                            api_status = None
+
+                        if api_status is not None:
+                            logger.info(f"Instagram API direct check successful: {api_status.value}")
+                            result = CheckResult(
+                                site_name=site.name,
+                                url=site.url.replace("{username}", username),
+                                status=api_status,
+                                url_main=site.url_main,
+                                tags=site.tags,
+                                fallback_used=False
+                            )
+                        else:
+                            logger.warning(f"Instagram API blocked/failed. Falling back to Dorking for {username}")
+                            fallback_result = await self._dorking.fallback_check(site, username)
+                            if fallback_result:
+                                result = fallback_result
+                            else:
+                                result = CheckResult(
+                                    site_name=site.name,
+                                    url=site.url.replace("{username}", username),
+                                    status=CheckStatus.AVAILABLE,
+                                    url_main=site.url_main,
+                                    tags=site.tags,
+                                    fallback_used=True
+                                )
+                    elif self._dorking._is_hard_target(site):
                         logger.debug(f"Special case triggered: Forcing Dorking for {site.name}")
                         fallback_result = await self._dorking.fallback_check(site, username)
                         if fallback_result:
