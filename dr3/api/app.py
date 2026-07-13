@@ -53,6 +53,9 @@ db: Optional[SitesDatabase] = None
 active_searches: Dict[str, IdentityReport] = {}
 search_history: list = []
 
+REPORTS_DIR = Path(__file__).parent.parent / "data" / "reports"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def get_db() -> SitesDatabase:
     """Get or initialize the sites database."""
@@ -113,36 +116,48 @@ async def get_search_history():
 @app.get("/api/report/{search_id}")
 async def get_report(search_id: str):
     """Get a completed search report."""
-    if search_id not in active_searches:
-        return JSONResponse(
-            status_code=404,
-            content={"error": "Report not found"},
-        )
-    report = active_searches[search_id]
-    return _serialize_report(report)
+    if search_id in active_searches:
+        return _serialize_report(active_searches[search_id])
+        
+    json_path = REPORTS_DIR / f"{search_id}.json"
+    if json_path.exists():
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Report not found"},
+    )
 
 
 @app.get("/api/report/{search_id}/export")
 async def export_report(search_id: str, format: str = Query("json")):
     """Export report in specified format."""
-    if search_id not in active_searches:
-        return JSONResponse(
-            status_code=404,
-            content={"error": "Report not found"},
-        )
-
-    report = active_searches[search_id]
-
     if format == "json":
-        return _serialize_report(report)
+        if search_id in active_searches:
+            return _serialize_report(active_searches[search_id])
+        json_path = REPORTS_DIR / f"{search_id}.json"
+        if json_path.exists():
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
     elif format == "html":
-        html = generate_html_report(report)
-        return HTMLResponse(content=html)
+        if search_id in active_searches:
+            html = generate_html_report(active_searches[search_id])
+            return HTMLResponse(content=html)
+        html_path = REPORTS_DIR / f"{search_id}.html"
+        if html_path.exists():
+            with open(html_path, "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
     else:
         return JSONResponse(
             status_code=400,
             content={"error": f"Unsupported format: {format}"},
         )
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Report not found"},
+    )
 
 
 # ── WebSocket Search ──
@@ -222,8 +237,25 @@ async def websocket_search(websocket: WebSocket):
                 analyzer = AIAnalyzer(api_key=config.gemini_api_key)
                 report = await analyzer.analyze_report(report)
 
+                # Sync search_id: engine generates its own, override
+                # so report.search_id matches the key we store it under
+                report.search_id = search_id
+
                 # Store report
                 active_searches[search_id] = report
+                
+                # Save to disk for persistence
+                try:
+                    report_data = _serialize_report(report)
+                    with open(REPORTS_DIR / f"{search_id}.json", "w", encoding="utf-8") as f:
+                        json.dump(report_data, f, ensure_ascii=False, indent=2)
+                        
+                    html_content = generate_html_report(report)
+                    with open(REPORTS_DIR / f"{search_id}.html", "w", encoding="utf-8") as f:
+                        f.write(html_content)
+                except Exception as e:
+                    logger.error(f"Failed to save report to disk: {e}")
+
                 search_history.append({
                     "search_id": search_id,
                     "username": username,
