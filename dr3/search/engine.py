@@ -232,29 +232,48 @@ class SearchEngine:
                         headers = {
                             "User-Agent": random.choice(DEFAULT_USER_AGENTS),
                             "X-IG-App-ID": "936619743392459",
-                            "Accept": "*/*"
+                            "Accept": "*/*",
+                            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+                            "Sec-Fetch-Dest": "empty",
+                            "Sec-Fetch-Mode": "cors",
+                            "Sec-Fetch-Site": "same-origin"
                         }
                         
                         api_status = None
-                        try:
-                            async with session.get(api_url, headers=headers, timeout=10) as response:
-                                if response.status == 200:
-                                    try:
-                                        data = await response.json()
-                                        if data and data.get("data", {}).get("user"):
-                                            api_status = CheckStatus.CLAIMED
-                                        else:
-                                            api_status = CheckStatus.AVAILABLE
-                                    except Exception:
-                                        api_status = None
-                                elif response.status == 404:
-                                    api_status = CheckStatus.AVAILABLE
-                                else:
-                                    # 429, 401, 500 etc -> blocked/uncertain, so we fall back to Dorking
-                                    api_status = None
-                        except Exception as e:
-                            logger.debug(f"Instagram API request error: {e}")
-                            api_status = None
+                        
+                        # Add initial random delay to avoid bot detection (1 to 3 seconds)
+                        await asyncio.sleep(random.uniform(1.0, 3.0))
+                        
+                        # Retry logic: 3 attempts total (0s delay first try, then 3s, then 6s)
+                        for attempt in range(3):
+                            if attempt > 0:
+                                backoff = attempt * 3.0
+                                logger.debug(f"Instagram API attempt {attempt+1}: waiting {backoff}s before retry...")
+                                await asyncio.sleep(backoff)
+                                
+                            try:
+                                async with session.get(api_url, headers=headers, timeout=10) as response:
+                                    if response.status == 200:
+                                        try:
+                                            data = await response.json()
+                                            if data and data.get("data", {}).get("user"):
+                                                api_status = CheckStatus.CLAIMED
+                                            else:
+                                                api_status = CheckStatus.AVAILABLE
+                                            break # Success, exit retry loop
+                                        except Exception:
+                                            # JSON parse error, could be blocked page
+                                            continue 
+                                    elif response.status == 404:
+                                        api_status = CheckStatus.AVAILABLE
+                                        break # Verified not found, exit retry loop
+                                    else:
+                                        # 429, 401, 500 etc -> blocked/uncertain
+                                        logger.debug(f"Instagram API returned {response.status} on attempt {attempt+1}")
+                                        continue
+                            except Exception as e:
+                                logger.debug(f"Instagram API request error on attempt {attempt+1}: {e}")
+                                continue
 
                         if api_status is not None:
                             logger.info(f"Instagram API direct check successful: {api_status.value}")
