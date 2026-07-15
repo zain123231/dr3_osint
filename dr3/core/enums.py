@@ -45,6 +45,7 @@ class InvestigationPhase(str, Enum):
     AI_ANALYSIS = "ai_analysis"              # AI-driven hypothesis generation
     PROFILE_BUILDING = "profile_building"    # Construct digital identity profile
     REPORT_GENERATION = "report_generation"  # Generate intelligence report
+    IMAGE_INTELLIGENCE = "image_intelligence"  # Public image analysis & correlation
 
 
 class QueryType(str, Enum):

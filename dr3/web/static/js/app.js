@@ -357,6 +357,7 @@ function formatPhase(phase) {
         'verification': 'Verification & SNA',
         'ai_analysis': 'AI Analysis',
         'profile_building': 'Profile Building',
+        'image_intelligence': 'Image Intelligence',
         'complete': 'Complete',
     };
     return map[phase] || phase;
@@ -436,7 +437,7 @@ window.expandNode = function(query) {
 }
 
 function updatePhase(phase) {
-    const phases = ['seed_resolution', 'identity_expansion', 'correlation', 'verification', 'ai_analysis', 'profile_building'];
+    const phases = ['seed_resolution', 'identity_expansion', 'correlation', 'verification', 'ai_analysis', 'profile_building', 'image_intelligence'];
     const idx = phases.indexOf(phase);
 
     $$('.phase-dot').forEach((dot, i) => {
@@ -526,6 +527,9 @@ function renderInvestigation(inv) {
     // Chart and Map
     renderChart(inv);
     renderMap(inv);
+
+    // Image Intelligence
+    renderImageIntelligence(inv);
 
     // Duration
     setTextSafe('search-duration', `${inv.duration_seconds || 0}s`);
@@ -1078,5 +1082,244 @@ async function saveToWatchlist() {
     } catch (e) {
         console.error(e);
         alert('خطأ في الاتصال بالخادم.');
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// IMAGE INTELLIGENCE RENDERER
+// ═══════════════════════════════════════════════════════════
+function renderImageIntelligence(inv) {
+    const section = $('#image-intelligence-section');
+    if (!section) return;
+
+    const imgData = inv.extra_data?.image_intelligence;
+    if (!imgData || imgData.total_images_collected === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+
+    // Subtitle
+    setTextSafe('img-intel-subtitle',
+        `${imgData.total_images_collected} images collected · ${imgData.total_images_analyzed || 0} analyzed`
+    );
+
+    // Assessment
+    setTextSafe('img-intel-assessment-text', imgData.assessment || '—');
+
+    // ── Image Gallery ──
+    const galleryGrid = $('#img-gallery-grid');
+    if (galleryGrid && imgData.images && imgData.images.length > 0) {
+        setTextSafe('img-gallery-count', `${imgData.images.length} images`);
+        galleryGrid.innerHTML = imgData.images.map(img => `
+            <div class="img-gallery-card animate-fade-in">
+                <span class="img-gallery-type">${escapeHtml(img.source_type)}</span>
+                <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.source_platform)}"
+                     loading="lazy" onerror="this.style.display='none'">
+                <div class="img-gallery-meta">
+                    <div class="img-gallery-platform">${escapeHtml(img.source_platform)}</div>
+                    <div class="img-gallery-username">@${escapeHtml(img.source_username)}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ── Face Matches ──
+    const faceSection = $('#face-match-section');
+    const faceGrid = $('#face-match-grid');
+    if (faceSection && faceGrid && imgData.face_matches && imgData.face_matches.length > 0) {
+        faceSection.style.display = '';
+        faceGrid.innerHTML = imgData.face_matches.map(match => {
+            const simPct = Math.round(match.similarity * 100);
+            const simClass = simPct >= 90 ? 'high' : 'moderate';
+            return `
+                <div class="face-match-card animate-fade-in">
+                    <img class="face-match-img" src="${escapeHtml(match.image_a_url)}"
+                         alt="${escapeHtml(match.image_a_platform)}" onerror="this.style.display='none'">
+                    <span class="face-match-arrow">⟷</span>
+                    <img class="face-match-img" src="${escapeHtml(match.image_b_url)}"
+                         alt="${escapeHtml(match.image_b_platform)}" onerror="this.style.display='none'">
+                    <div class="face-match-info">
+                        <div class="face-match-platforms">
+                            ${escapeHtml(match.image_a_platform)} ↔ ${escapeHtml(match.image_b_platform)}
+                        </div>
+                        <div class="face-match-detail">
+                            @${escapeHtml(match.image_a_username)} ↔ @${escapeHtml(match.image_b_username)}
+                        </div>
+                    </div>
+                    <div class="face-match-similarity ${simClass}">${simPct}%</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // ── AI Analysis ──
+    const aiSection = $('#ai-analysis-section');
+    const aiGrid = $('#ai-analysis-grid');
+    if (aiSection && aiGrid && imgData.analyses && imgData.analyses.length > 0) {
+        const withContent = imgData.analyses.filter(a => a.description || a.face_description || a.landmarks?.length > 0);
+        if (withContent.length > 0) {
+            aiSection.style.display = '';
+            aiGrid.innerHTML = withContent.map(analysis => {
+                const rows = [];
+                if (analysis.description)
+                    rows.push(['Description', analysis.description]);
+                if (analysis.faces_detected > 0)
+                    rows.push(['Faces', `${analysis.faces_detected} detected`]);
+                if (analysis.face_description)
+                    rows.push(['Face Detail', analysis.face_description]);
+                if (analysis.scene_type)
+                    rows.push(['Scene', analysis.scene_type]);
+                if (analysis.estimated_country)
+                    rows.push(['Country', analysis.estimated_country]);
+                if (analysis.estimated_city)
+                    rows.push(['City', analysis.estimated_city]);
+                if (analysis.weather)
+                    rows.push(['Weather', analysis.weather]);
+                if (analysis.time_of_day)
+                    rows.push(['Time', analysis.time_of_day]);
+                if (analysis.exif_camera)
+                    rows.push(['Camera', analysis.exif_camera]);
+                if (analysis.exif_datetime)
+                    rows.push(['EXIF Date', analysis.exif_datetime]);
+                if (analysis.analysis_method)
+                    rows.push(['Method', analysis.analysis_method]);
+
+                return `
+                    <div class="ai-analysis-card animate-fade-in">
+                        <div class="ai-analysis-card-header">
+                            <img src="${escapeHtml(analysis.image_url)}" alt="" onerror="this.style.display='none'">
+                            <div>
+                                <div class="ai-analysis-card-title">${escapeHtml(analysis.source_platform)}</div>
+                                <div class="ai-analysis-card-subtitle">@${escapeHtml(analysis.source_username)}</div>
+                            </div>
+                        </div>
+                        ${rows.map(([key, val]) => `
+                            <div class="ai-analysis-row">
+                                <span class="ai-analysis-key">${escapeHtml(key)}</span>
+                                <span class="ai-analysis-val">${escapeHtml(String(val))}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // ── OCR & Objects ──
+    const ocrSection = $('#ocr-objects-section');
+    const ocrGrid = $('#ocr-objects-grid');
+    if (ocrSection && ocrGrid) {
+        const hasOcr = imgData.all_ocr_text && imgData.all_ocr_text.length > 0;
+        const hasObj = imgData.all_objects && imgData.all_objects.length > 0;
+        const hasLandmarks = imgData.all_landmarks && imgData.all_landmarks.length > 0;
+
+        if (hasOcr || hasObj || hasLandmarks) {
+            ocrSection.style.display = '';
+            let cards = '';
+
+            if (hasOcr) {
+                cards += `
+                    <div class="ai-analysis-card animate-fade-in">
+                        <div class="analysis-card-title">◈ OCR Text</div>
+                        ${imgData.all_ocr_text.map(t => `
+                            <div class="ai-analysis-row">
+                                <span class="ai-analysis-val" style="max-width:100%">${escapeHtml(t)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            if (hasObj) {
+                cards += `
+                    <div class="ai-analysis-card animate-fade-in">
+                        <div class="analysis-card-title">◈ Detected Objects</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+                            ${imgData.all_objects.map(o => `<span class="tag">${escapeHtml(o)}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            if (hasLandmarks) {
+                cards += `
+                    <div class="ai-analysis-card animate-fade-in">
+                        <div class="analysis-card-title">◈ Landmarks</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+                            ${imgData.all_landmarks.map(l => `<span class="tag" style="border-color:rgba(0,229,255,0.2);color:var(--cyan)">${escapeHtml(l)}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            ocrGrid.innerHTML = cards;
+        }
+    }
+
+    // ── Image Locations Map ──
+    const locSection = $('#img-locations-section');
+    if (locSection && imgData.gps_points && imgData.gps_points.length > 0) {
+        locSection.style.display = '';
+        try {
+            if (window._imgMap) {
+                window._imgMap.remove();
+            }
+            const mapEl = document.getElementById('img-map-container');
+            const map = L.map(mapEl).setView([imgData.gps_points[0].lat, imgData.gps_points[0].lon], 6);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© CartoDB',
+                maxZoom: 18,
+            }).addTo(map);
+
+            imgData.gps_points.forEach(pt => {
+                L.marker([pt.lat, pt.lon])
+                    .addTo(map)
+                    .bindPopup(`<b>${pt.source}</b><br>GPS: ${pt.lat}, ${pt.lon}`);
+            });
+
+            window._imgMap = map;
+            setTimeout(() => map.invalidateSize(), 200);
+        } catch (e) {
+            console.warn('Image map error:', e);
+        }
+    } else if (locSection && imgData.unique_locations && imgData.unique_locations.length > 0) {
+        // Show locations as text if no GPS
+        locSection.style.display = '';
+        const mapEl = document.getElementById('img-map-container');
+        if (mapEl) {
+            mapEl.style.height = 'auto';
+            mapEl.style.padding = '1rem';
+            mapEl.innerHTML = `
+                <div class="analysis-card-title">◈ Estimated Locations (from AI)</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                    ${imgData.unique_locations.map(l => `<span class="tag" style="border-color:rgba(0,229,255,0.2);color:var(--cyan);font-size:11px;padding:3px 8px;">${escapeHtml(l)}</span>`).join('')}
+                </div>
+            `;
+        }
+    }
+
+    // ── Correlations ──
+    const corrSection = $('#img-correlations-section');
+    const corrLog = $('#img-correlations-log');
+    if (corrSection && corrLog && imgData.correlations && imgData.correlations.length > 0) {
+        corrSection.style.display = '';
+        corrLog.innerHTML = imgData.correlations.map(corr => {
+            const typeColor = {
+                'face_match': 'var(--neon)',
+                'location_match': 'var(--cyan)',
+                'text_match': 'var(--amber)',
+                'timeline_match': 'var(--purple)',
+            }[corr.type] || 'var(--text-muted)';
+            
+            const confPct = Math.round(corr.confidence * 100);
+            return `
+                <div class="evidence-item animate-fade-in">
+                    <span class="evidence-type positive" style="border-color:${typeColor};color:${typeColor}">
+                        ${escapeHtml(corr.type.replace('_', ' '))}
+                    </span>
+                    <span class="evidence-desc">${escapeHtml(corr.description)}</span>
+                    <span class="evidence-weight positive" style="color:${typeColor}">${confPct}%</span>
+                </div>
+            `;
+        }).join('');
     }
 }

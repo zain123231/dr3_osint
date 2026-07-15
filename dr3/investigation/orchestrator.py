@@ -370,7 +370,82 @@ class InvestigationOrchestrator:
             self.confidence_engine.score_investigation(investigation)
 
             # ═══════════════════════════════════════════════════
-            # PHASE 8: COMPLETE
+            # PHASE 9: IMAGE INTELLIGENCE
+            # ═══════════════════════════════════════════════════
+            investigation.current_phase = InvestigationPhase.IMAGE_INTELLIGENCE
+            await emit("image_intelligence", 90, "بدء تحليل الصور العامة المكتشفة...")
+
+            try:
+                from ..imaging.image_collector import ImageCollector
+                from ..imaging.image_hasher import ImageHasher
+                from ..imaging.image_analyzer import ImageAnalyzer
+                from ..imaging.image_correlator import ImageCorrelator
+
+                # Collect images from discovered nodes
+                img_collector = ImageCollector()
+                
+                async def img_progress(msg):
+                    await emit("image_intelligence", 92, msg)
+
+                image_assets = await img_collector.collect(investigation, progress_callback=img_progress)
+                await img_collector.close()
+
+                if image_assets:
+                    await emit("image_intelligence", 93, f"تم جمع {len(image_assets)} صورة — بدء التحليل...")
+
+                    # Compute perceptual hashes and find matches
+                    hasher = ImageHasher()
+                    hash_matches = hasher.find_matches(image_assets)
+
+                    if hash_matches:
+                        await emit("image_intelligence", 94, f"تم اكتشاف {len(hash_matches)} تطابق بصري بين الصور!")
+
+                    # Analyze images (Gemini Vision or EXIF fallback)
+                    analyzer = ImageAnalyzer(gemini_api_key=self.gemini_key)
+                    
+                    async def analysis_progress(msg):
+                        await emit("image_intelligence", 95, msg)
+                    
+                    analyses = await analyzer.analyze_all(image_assets, progress_callback=analysis_progress)
+
+                    await emit("image_intelligence", 97, "ربط نتائج الصور مع بيانات التحقيق...")
+
+                    # Cross-correlate with OSINT data
+                    correlator = ImageCorrelator()
+                    img_report = correlator.correlate(image_assets, analyses, hash_matches, investigation)
+
+                    # Store in investigation
+                    if not investigation.extra_data:
+                        investigation.extra_data = {}
+                    investigation.extra_data["image_intelligence"] = img_report.to_dict()
+
+                    await emit("image_intelligence", 98,
+                        f"اكتمل تحليل الصور: {len(image_assets)} صورة، "
+                        f"{img_report.faces_detected} وجه، "
+                        f"{len(hash_matches)} تطابق"
+                    )
+                else:
+                    await emit("image_intelligence", 98, "لا توجد صور عامة متاحة للتحليل")
+                    if not investigation.extra_data:
+                        investigation.extra_data = {}
+                    investigation.extra_data["image_intelligence"] = {
+                        "total_images_collected": 0,
+                        "total_images_analyzed": 0,
+                        "assessment": "لم يتم اكتشاف صور عامة من الحسابات المكتشفة.",
+                    }
+
+            except Exception as img_err:
+                logger.warning(f"Image intelligence phase failed (non-fatal): {img_err}", exc_info=True)
+                await emit("image_intelligence", 98, f"تعذر تحليل الصور: {str(img_err)[:100]}")
+                if not investigation.extra_data:
+                    investigation.extra_data = {}
+                investigation.extra_data["image_intelligence"] = {
+                    "total_images_collected": 0,
+                    "error": str(img_err)[:200],
+                }
+
+            # ═══════════════════════════════════════════════════
+            # PHASE 10: COMPLETE
             # ═══════════════════════════════════════════════════
             investigation.current_phase = InvestigationPhase.REPORT_GENERATION
             investigation.status = InvestigationStatus.COMPLETED
@@ -393,6 +468,7 @@ class InvestigationOrchestrator:
             )
 
             return investigation
+
 
         except Exception as e:
             logger.error(f"Investigation failed: {e}", exc_info=True)

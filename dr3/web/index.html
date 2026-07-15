@@ -214,6 +214,7 @@
                     <div class="phase-dot" data-phase="verification">◈ VERIFICATION</div>
                     <div class="phase-dot" data-phase="ai_analysis">◈ AI ANALYSIS</div>
                     <div class="phase-dot" data-phase="profile_building">◈ PROFILE BUILD</div>
+                    <div class="phase-dot" data-phase="image_intelligence">◈ IMAGE INTEL</div>
                 </div>
 
                 <div class="progress-header">
@@ -370,6 +371,69 @@
                     <h3 class="section-title">◈ Evidence Log</h3>
                 </div>
                 <div class="evidence-log" id="evidence-log"></div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════ -->
+            <!-- IMAGE INTELLIGENCE SECTION                    -->
+            <!-- ══════════════════════════════════════════════ -->
+            <div id="image-intelligence-section" style="display:none; margin-top: 2rem;">
+                <div class="section-header">
+                    <h3 class="section-title">◈ Public Image Intelligence</h3>
+                    <span class="section-subtitle" id="img-intel-subtitle"></span>
+                </div>
+
+                <!-- Image Intelligence Assessment -->
+                <div class="summary-card" id="img-intel-assessment">
+                    <div class="analysis-card-title">◈ Image Intelligence Assessment</div>
+                    <p class="summary-text" id="img-intel-assessment-text">—</p>
+                </div>
+
+                <!-- Image Gallery -->
+                <div class="section-header" style="margin-top: 1.5rem;">
+                    <h4 class="section-title" style="font-size: 0.75rem;">◈ Collected Images</h4>
+                    <span class="section-subtitle" id="img-gallery-count"></span>
+                </div>
+                <div class="img-gallery-grid" id="img-gallery-grid"></div>
+
+                <!-- Face Match Grid -->
+                <div id="face-match-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Face / Image Matches</h4>
+                    </div>
+                    <div id="face-match-grid" class="face-match-grid"></div>
+                </div>
+
+                <!-- AI Analysis Results -->
+                <div id="ai-analysis-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ AI Image Analysis</h4>
+                    </div>
+                    <div class="analysis-grid" id="ai-analysis-grid"></div>
+                </div>
+
+                <!-- Detected Objects & OCR -->
+                <div id="ocr-objects-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Detected Text & Objects</h4>
+                    </div>
+                    <div class="analysis-grid" id="ocr-objects-grid"></div>
+                </div>
+
+                <!-- Image Locations Map -->
+                <div id="img-locations-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Image Geolocation</h4>
+                    </div>
+                    <div id="img-map-container" style="height: 350px; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-dim); z-index: 1;"></div>
+                </div>
+
+                <!-- Image Correlations -->
+                <div id="img-correlations-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Image-OSINT Correlations</h4>
+                    </div>
+                    <div class="evidence-log" id="img-correlations-log"></div>
+                </div>
             </div>
 
             <!-- Next Steps -->

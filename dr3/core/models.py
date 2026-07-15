@@ -431,6 +431,9 @@ class Investigation:
     max_expansion_depth: int = 3
     max_nodes: int = 50
 
+    # Extra data (plugins, image intelligence, etc.)
+    extra_data: Dict[str, Any] = field(default_factory=dict)
+
     @property
     def seed_node(self) -> Optional[IdentityNode]:
         if self.seed_node_id and self.seed_node_id in self.nodes:
@@ -533,6 +536,7 @@ class Investigation:
             "nodes": {nid: n.to_dict() for nid, n in self.nodes.items()},
             "edges": {eid: e.to_dict() for eid, e in self.edges.items()},
             "timeline": [t.to_dict() for t in self.timeline_events],
+            "extra_data": self.extra_data,
         }
 
     def to_graph_dict(self) -> Dict[str, Any]:
