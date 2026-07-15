@@ -1,270 +1,354 @@
 /**
- * DR3 Intelligence Platform — Cyber Background Engine
+ * DR3 Intelligence Platform — Cyber Background Engine v2.0
  * 
- * Renders a subtle animated background inspired by:
- * - Matrix rain (very subtle green characters)
- * - Floating particles with connection lines
- * - Hexagonal grid overlay
- * 
- * Performance-optimized:
- * - Uses requestAnimationFrame
- * - Pauses when tab is hidden
- * - Respects prefers-reduced-motion
- * - Automatically adjusts density based on viewport
+ * Multi-layered animated cyber environment:
+ * Layer 0: Perspective grid
+ * Layer 1: Matrix rain (green falling characters)
+ * Layer 2: Floating hex values
+ * Layer 3: Network constellation
+ * Layer 4: Scan lines + CRT effect
+ * Layer 5: Ambient glow fog
  */
 
-class CyberBackground {
-    constructor(canvasId) {
-        this.canvas = document.getElementById(canvasId);
-        if (!this.canvas) return;
+(function() {
+    'use strict';
 
-        this.ctx = this.canvas.getContext('2d');
-        this.particles = [];
-        this.matrixDrops = [];
-        this.running = true;
-        this.frameCount = 0;
+    const canvas = document.getElementById('cyber-bg-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
-        // Check for reduced motion preference
-        this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let W, H;
+    const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
-        // Configuration
-        this.config = {
-            particleCount: 40,
-            particleSpeed: 0.15,
-            connectionDistance: 150,
-            matrixDensity: 25,    // columns
-            matrixSpeed: 0.4,
-            matrixOpacity: 0.04,  // Very subtle
-            particleOpacity: 0.12,
-            connectionOpacity: 0.04,
-            colors: {
-                matrix: '#00ff66',
-                particle: '#00eaff',
-                connection: '#00eaff',
+    function resize() {
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W * DPR;
+        canvas.height = H * DPR;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        initMatrix();
+    }
+
+    // ═══════════════════════════════════════════════
+    // MATRIX RAIN
+    // ═══════════════════════════════════════════════
+    const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF:.;+=*^%$#@!~<>{}[]|/\\';
+    const FONT_SIZE = 14;
+    let columns = 0;
+    let drops = [];
+
+    function initMatrix() {
+        columns = Math.floor(W / FONT_SIZE);
+        drops = [];
+        for (let i = 0; i < columns; i++) {
+            drops[i] = Math.random() * -100;
+        }
+    }
+
+    function drawMatrixRain() {
+        // Fade effect
+        ctx.fillStyle = 'rgba(4, 4, 4, 0.06)';
+        ctx.fillRect(0, 0, W, H);
+
+        for (let i = 0; i < columns; i++) {
+            // Only render ~40% of columns for performance + sparser look
+            if (i % 3 !== 0 && i % 5 !== 0) continue;
+            
+            const char = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+            const x = i * FONT_SIZE;
+            const y = drops[i] * FONT_SIZE;
+
+            // Head character — bright green
+            ctx.font = `${FONT_SIZE}px 'JetBrains Mono', monospace`;
+            ctx.fillStyle = '#00ff66';
+            ctx.globalAlpha = 0.9;
+            ctx.fillText(char, x, y);
+
+            // Trail characters — dimmer
+            ctx.globalAlpha = 0.15;
+            ctx.fillStyle = '#00ff66';
+            const trailChar = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+            ctx.fillText(trailChar, x, y - FONT_SIZE);
+            ctx.globalAlpha = 0.07;
+            ctx.fillText(trailChar, x, y - FONT_SIZE * 2);
+
+            ctx.globalAlpha = 1;
+
+            if (y > H && Math.random() > 0.975) {
+                drops[i] = 0;
             }
+            drops[i] += 0.5 + Math.random() * 0.3;
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    // GRID OVERLAY
+    // ═══════════════════════════════════════════════
+    function drawGrid() {
+        const spacing = 60;
+        ctx.strokeStyle = 'rgba(0, 255, 102, 0.03)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        // Vertical lines
+        for (let x = 0; x < W; x += spacing) {
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, H);
+        }
+        // Horizontal lines
+        for (let y = 0; y < H; y += spacing) {
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+        }
+        ctx.stroke();
+    }
+
+    // ═══════════════════════════════════════════════
+    // FLOATING HEX VALUES
+    // ═══════════════════════════════════════════════
+    const hexParticles = [];
+    const MAX_HEX = 15;
+
+    function initHex() {
+        for (let i = 0; i < MAX_HEX; i++) {
+            hexParticles.push(createHexParticle());
+        }
+    }
+
+    function createHexParticle() {
+        const hexVal = '0x' + Math.floor(Math.random() * 0xFFFFFF).toString(16).toUpperCase().padStart(6, '0');
+        return {
+            x: Math.random() * W,
+            y: Math.random() * H,
+            text: hexVal,
+            alpha: 0,
+            alphaDir: 0.002 + Math.random() * 0.005,
+            maxAlpha: 0.08 + Math.random() * 0.12,
+            speed: 0.1 + Math.random() * 0.2,
         };
-
-        this.init();
     }
 
-    init() {
-        if (this.reduceMotion) {
-            // Static subtle grid only
-            this.resize();
-            this.drawStaticGrid();
-            return;
-        }
-
-        this.resize();
-        this.initParticles();
-        this.initMatrix();
-
-        window.addEventListener('resize', () => this.resize());
-
-        // Pause when tab is hidden
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                this.running = false;
-            } else {
-                this.running = true;
-                this.animate();
+    function drawHex() {
+        ctx.font = '11px "JetBrains Mono", monospace';
+        for (let p of hexParticles) {
+            p.alpha += p.alphaDir;
+            p.y -= p.speed;
+            if (p.alpha >= p.maxAlpha) p.alphaDir = -Math.abs(p.alphaDir);
+            if (p.alpha <= 0 || p.y < -20) {
+                Object.assign(p, createHexParticle());
+                p.y = H + 20;
+                p.alpha = 0;
+                p.alphaDir = Math.abs(p.alphaDir);
             }
-        });
-
-        this.animate();
-    }
-
-    resize() {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        this.width = window.innerWidth;
-        this.height = window.innerHeight;
-        this.canvas.width = this.width * dpr;
-        this.canvas.height = this.height * dpr;
-        this.canvas.style.width = this.width + 'px';
-        this.canvas.style.height = this.height + 'px';
-        this.ctx.scale(dpr, dpr);
-
-        // Adjust density for mobile
-        if (this.width < 768) {
-            this.config.particleCount = 15;
-            this.config.matrixDensity = 10;
+            ctx.fillStyle = '#00ff66';
+            ctx.globalAlpha = p.alpha;
+            ctx.fillText(p.text, p.x, p.y);
         }
+        ctx.globalAlpha = 1;
     }
 
-    // ── Particle System ──
-    initParticles() {
-        this.particles = [];
-        for (let i = 0; i < this.config.particleCount; i++) {
-            this.particles.push({
-                x: Math.random() * this.width,
-                y: Math.random() * this.height,
-                vx: (Math.random() - 0.5) * this.config.particleSpeed,
-                vy: (Math.random() - 0.5) * this.config.particleSpeed,
-                size: Math.random() * 2 + 0.5,
-                opacity: Math.random() * 0.5 + 0.3,
+    // ═══════════════════════════════════════════════
+    // NETWORK CONSTELLATION
+    // ═══════════════════════════════════════════════
+    const netNodes = [];
+    const MAX_NODES = 25;
+
+    function initNetwork() {
+        for (let i = 0; i < MAX_NODES; i++) {
+            netNodes.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                vx: (Math.random() - 0.5) * 0.3,
+                vy: (Math.random() - 0.5) * 0.3,
+                r: 1 + Math.random() * 1.5,
+                pulse: Math.random() * Math.PI * 2,
             });
         }
     }
 
-    updateParticles() {
-        for (const p of this.particles) {
-            p.x += p.vx;
-            p.y += p.vy;
-
-            // Wrap around edges
-            if (p.x < 0) p.x = this.width;
-            if (p.x > this.width) p.x = 0;
-            if (p.y < 0) p.y = this.height;
-            if (p.y > this.height) p.y = 0;
-        }
-    }
-
-    drawParticles() {
-        const ctx = this.ctx;
-
-        // Draw connections first (behind particles)
-        for (let i = 0; i < this.particles.length; i++) {
-            for (let j = i + 1; j < this.particles.length; j++) {
-                const a = this.particles[i];
-                const b = this.particles[j];
-                const dx = a.x - b.x;
-                const dy = a.y - b.y;
+    function drawNetwork() {
+        const connDist = 180;
+        // Draw connections
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < netNodes.length; i++) {
+            for (let j = i + 1; j < netNodes.length; j++) {
+                const dx = netNodes[i].x - netNodes[j].x;
+                const dy = netNodes[i].y - netNodes[j].y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < this.config.connectionDistance) {
-                    const opacity = (1 - dist / this.config.connectionDistance) * this.config.connectionOpacity;
-                    ctx.strokeStyle = `rgba(0, 234, 255, ${opacity})`;
-                    ctx.lineWidth = 0.5;
+                if (dist < connDist) {
+                    const alpha = (1 - dist / connDist) * 0.08;
+                    ctx.strokeStyle = `rgba(0, 255, 102, ${alpha})`;
                     ctx.beginPath();
-                    ctx.moveTo(a.x, a.y);
-                    ctx.lineTo(b.x, b.y);
+                    ctx.moveTo(netNodes[i].x, netNodes[i].y);
+                    ctx.lineTo(netNodes[j].x, netNodes[j].y);
                     ctx.stroke();
                 }
             }
         }
 
-        // Draw particles
-        for (const p of this.particles) {
+        // Draw nodes
+        for (let n of netNodes) {
+            n.pulse += 0.02;
+            n.x += n.vx;
+            n.y += n.vy;
+            if (n.x < 0 || n.x > W) n.vx *= -1;
+            if (n.y < 0 || n.y > H) n.vy *= -1;
+
+            const glow = 0.3 + Math.sin(n.pulse) * 0.2;
+            ctx.fillStyle = `rgba(0, 255, 102, ${glow})`;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(0, 234, 255, ${p.opacity * this.config.particleOpacity})`;
+            ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
             ctx.fill();
 
-            // Subtle glow
+            // Glow ring
+            ctx.strokeStyle = `rgba(0, 255, 102, ${glow * 0.3})`;
+            ctx.lineWidth = 0.5;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size * 3, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(0, 234, 255, ${p.opacity * 0.02})`;
-            ctx.fill();
+            ctx.arc(n.x, n.y, n.r + 3, 0, Math.PI * 2);
+            ctx.stroke();
         }
     }
 
-    // ── Matrix Rain ──
-    initMatrix() {
-        this.matrixDrops = [];
-        const columns = this.config.matrixDensity;
-        const colWidth = this.width / columns;
+    // ═══════════════════════════════════════════════
+    // BINARY STREAMS (horizontal)
+    // ═══════════════════════════════════════════════
+    const binaryStreams = [];
+    const MAX_STREAMS = 6;
 
-        for (let i = 0; i < columns; i++) {
-            this.matrixDrops.push({
-                x: i * colWidth + colWidth / 2,
-                y: Math.random() * this.height * -1,
-                speed: this.config.matrixSpeed + Math.random() * 0.3,
-                chars: this.generateMatrixColumn(),
-                charIndex: 0,
-                opacity: Math.random() * 0.5 + 0.5,
+    function initBinary() {
+        for (let i = 0; i < MAX_STREAMS; i++) {
+            binaryStreams.push({
+                y: Math.random() * H,
+                x: -200 - Math.random() * 500,
+                speed: 0.3 + Math.random() * 0.8,
+                text: Array.from({length: 40}, () => Math.random() > 0.5 ? '1' : '0').join(' '),
+                alpha: 0.03 + Math.random() * 0.05,
             });
         }
     }
 
-    generateMatrixColumn() {
-        const chars = '01アイウエオカキクケコ♦◊□△▽○●◆◇';
-        const length = Math.floor(Math.random() * 12) + 5;
-        let result = '';
-        for (let i = 0; i < length; i++) {
-            result += chars[Math.floor(Math.random() * chars.length)];
-        }
-        return result;
-    }
-
-    drawMatrix() {
-        const ctx = this.ctx;
-        ctx.font = '12px "JetBrains Mono", monospace';
-
-        for (const drop of this.matrixDrops) {
-            // Draw each character in the trail
-            for (let i = 0; i < drop.chars.length; i++) {
-                const y = drop.y - i * 16;
-                if (y < -20 || y > this.height + 20) continue;
-
-                const fadeOpacity = i === 0
-                    ? this.config.matrixOpacity * drop.opacity
-                    : this.config.matrixOpacity * drop.opacity * (1 - i / drop.chars.length) * 0.6;
-
-                if (fadeOpacity < 0.005) continue;
-
-                ctx.fillStyle = `rgba(0, 255, 102, ${fadeOpacity})`;
-                ctx.fillText(drop.chars[i], drop.x, y);
+    function drawBinary() {
+        ctx.font = '10px "JetBrains Mono", monospace';
+        for (let s of binaryStreams) {
+            s.x += s.speed;
+            if (s.x > W + 200) {
+                s.x = -600;
+                s.y = Math.random() * H;
+                s.text = Array.from({length: 40}, () => Math.random() > 0.5 ? '1' : '0').join(' ');
             }
-
-            // Move drop down
-            drop.y += drop.speed;
-
-            // Reset when off screen
-            if (drop.y - drop.chars.length * 16 > this.height) {
-                drop.y = Math.random() * -200;
-                drop.chars = this.generateMatrixColumn();
-                drop.opacity = Math.random() * 0.5 + 0.5;
-            }
+            ctx.fillStyle = '#00ff66';
+            ctx.globalAlpha = s.alpha;
+            ctx.fillText(s.text, s.x, s.y);
         }
+        ctx.globalAlpha = 1;
     }
 
-    // ── Static Grid (for reduced motion) ──
-    drawStaticGrid() {
-        const ctx = this.ctx;
-        ctx.strokeStyle = 'rgba(0, 234, 255, 0.02)';
-        ctx.lineWidth = 0.5;
+    // ═══════════════════════════════════════════════
+    // SCAN LINES
+    // ═══════════════════════════════════════════════
+    let scanY = 0;
 
-        const gridSize = 60;
-        for (let x = 0; x < this.width; x += gridSize) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, this.height);
-            ctx.stroke();
-        }
-        for (let y = 0; y < this.height; y += gridSize) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(this.width, y);
-            ctx.stroke();
-        }
-    }
-
-    // ── Animation Loop ──
-    animate() {
-        if (!this.running) return;
-
-        this.ctx.clearRect(0, 0, this.width, this.height);
-
-        this.frameCount++;
-
-        // Matrix rain (every other frame for performance)
-        if (this.frameCount % 2 === 0) {
-            this.drawMatrix();
+    function drawScanLines() {
+        // Static scan lines
+        ctx.fillStyle = 'rgba(0, 255, 102, 0.008)';
+        for (let y = 0; y < H; y += 3) {
+            ctx.fillRect(0, y, W, 1);
         }
 
-        // Particles
-        this.updateParticles();
-        this.drawParticles();
-
-        requestAnimationFrame(() => this.animate());
+        // Moving scan line
+        scanY = (scanY + 0.8) % H;
+        const gradient = ctx.createLinearGradient(0, scanY - 30, 0, scanY + 30);
+        gradient.addColorStop(0, 'rgba(0, 255, 102, 0)');
+        gradient.addColorStop(0.5, 'rgba(0, 255, 102, 0.04)');
+        gradient.addColorStop(1, 'rgba(0, 255, 102, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, scanY - 30, W, 60);
     }
 
-    destroy() {
-        this.running = false;
-    }
-}
+    // ═══════════════════════════════════════════════
+    // AMBIENT GLOW
+    // ═══════════════════════════════════════════════
+    let glowPhase = 0;
 
-// Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.cyberBg = new CyberBackground('cyber-bg-canvas');
-});
+    function drawGlow() {
+        glowPhase += 0.005;
+        const intensity = 0.03 + Math.sin(glowPhase) * 0.015;
+        
+        // Center glow
+        const grd = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.6);
+        grd.addColorStop(0, `rgba(0, 255, 102, ${intensity})`);
+        grd.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, W, H);
+
+        // Corner vignette
+        const vignette = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.8);
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    // ═══════════════════════════════════════════════
+    // MAIN LOOP
+    // ═══════════════════════════════════════════════
+    let frame = 0;
+
+    function animate() {
+        frame++;
+
+        // Base clear — very dark with slight persistence
+        if (frame % 2 === 0) {
+            ctx.fillStyle = 'rgba(4, 4, 4, 0.15)';
+            ctx.fillRect(0, 0, W, H);
+        }
+
+        // Layer 0: Grid (every 3rd frame)
+        if (frame % 3 === 0) drawGrid();
+
+        // Layer 1: Matrix rain (every frame)
+        drawMatrixRain();
+
+        // Layer 2: Binary streams (every frame)
+        drawBinary();
+
+        // Layer 3: Floating hex (every 2nd frame)
+        if (frame % 2 === 0) drawHex();
+
+        // Layer 4: Network constellation (every 2nd frame)
+        if (frame % 2 === 0) drawNetwork();
+
+        // Layer 5: Scan lines (every frame)
+        drawScanLines();
+
+        // Layer 6: Ambient glow (every 4th frame)
+        if (frame % 4 === 0) drawGlow();
+
+        requestAnimationFrame(animate);
+    }
+
+    // ═══════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════
+    function init() {
+        resize();
+        initHex();
+        initNetwork();
+        initBinary();
+
+        // Initial fill
+        ctx.fillStyle = '#040404';
+        ctx.fillRect(0, 0, W, H);
+
+        animate();
+    }
+
+    window.addEventListener('resize', resize);
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
