@@ -38,3 +38,16 @@ debug.log
 
 # Poetry
 poetry.lock
+
+# Database
+*.db
+dr3/db/
+
+# Test files
+test_*.py
+audit_*.txt
+*.html
+!dr3/web/index.html
+check_status.py
+clean_sites.py
+dr3.txt

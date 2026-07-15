@@ -123,6 +123,7 @@ class SitesDatabase:
             protocol=mapped.get("protocol", ""),
             activation=mapped.get("activation", {}),
             site_type=mapped.get("type", "username"),
+            priority=mapped.get("priority", 999),
         )
 
     def get_ranked_sites(
@@ -164,8 +165,8 @@ class SitesDatabase:
 
             filtered.append(site)
 
-        # Sort by Alexa rank (lower = more popular = first)
-        filtered.sort(key=lambda s: s.alexa_rank or sys.maxsize)
+        # Sort by priority, then by Alexa rank (lower = more popular = first)
+        filtered.sort(key=lambda s: (getattr(s, 'priority', 999), s.alexa_rank or sys.maxsize))
 
         return filtered[:top]
 

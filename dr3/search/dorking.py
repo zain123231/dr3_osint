@@ -11,14 +11,15 @@ import asyncio
 import logging
 import random
 import re
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import aiohttp
+from bs4 import BeautifulSoup
 
 from ..core.constants import DEFAULT_USER_AGENTS
-from ..core.enums import CheckStatus
-from ..core.models import SiteConfig, CheckResult
+from ..core.enums import CheckStatus, CollectionMethod
+from ..core.models import SiteConfig, CollectionResult
 
 logger = logging.getLogger("dr3.dorking")
 
@@ -147,7 +148,7 @@ class DorkingEngine:
 
         return False
 
-    async def fallback_check(self, site: SiteConfig, username: str) -> Optional[CheckResult]:
+    async def fallback_check(self, site: SiteConfig, username: str) -> Optional[CollectionResult]:
         """Perform a dork search via Bing if the site is a hard target."""
         if not self._is_hard_target(site):
             return None
@@ -184,24 +185,26 @@ class DorkingEngine:
 
                     if found:
                         logger.info(f"Deep Search found match for {username} on {site.name}")
-                        return CheckResult(
-                            site_name=site.name,
-                            url=expected_url,
-                            status=CheckStatus.CLAIMED,
-                            url_main=site.url_main,
+                        return CollectionResult(
+                            platform=site.name,
+                            profile_url=expected_url,
+                            status=CheckStatus.FOUND,
+                            collection_method=CollectionMethod.SEARCH_ENGINE,
+                            username=username,
                             http_status=200,
                             response_time=0.0,
                             tags=site.tags,
                             fallback_used=True,
-                            extracted_data={"dork_match": True}
+                            extra_data={"dork_match": True}
                         )
                     else:
                         logger.debug(f"Deep Search found NO match for {username} on {site.name}")
-                        return CheckResult(
-                            site_name=site.name,
-                            url=expected_url,
-                            status=CheckStatus.AVAILABLE,
-                            url_main=site.url_main,
+                        return CollectionResult(
+                            platform=site.name,
+                            profile_url=expected_url,
+                            status=CheckStatus.NOT_FOUND,
+                            collection_method=CollectionMethod.SEARCH_ENGINE,
+                            username=username,
                             http_status=404,
                             response_time=0.0,
                             tags=site.tags,
@@ -211,3 +214,80 @@ class DorkingEngine:
         except Exception as e:
             logger.error(f"Dorking engine error: {e}")
             return None
+
+    async def search_leaks(self, username: str) -> list[dict]:
+        """Perform a dork search for leaks on pastebin sites."""
+        logger.info(f"Initiating Leak Search for {username}")
+        
+        leak_sites = ["pastebin.com", "ghostbin.com", "trello.com"]
+        site_query = " OR ".join([f"site:{s}" for s in leak_sites])
+        dork = f'({site_query}) "{username}"'
+        
+        results = []
+        try:
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+            async with self._semaphore:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as session:
+                    headers = self._build_headers()
+                    params = {"q": dork}
+                    
+                    html_text = await self._fetch_with_retry(
+                        session, self.BING_URL, params, headers, "LeakSearch"
+                    )
+                    
+                    if html_text:
+                        # Extract basic links from Bing
+                        links = re.findall(r'<a[^>]+href="(https?://(pastebin\.com|ghostbin\.com|trello\.com)[^"]+)"', html_text)
+                        titles = re.findall(r'<h2[^>]*><a[^>]*>(.*?)</a></h2>', html_text)
+                        
+                        seen = set()
+                        for i, match in enumerate(links):
+                            url = match[0] if isinstance(match, tuple) else match
+                            if url not in seen and not "microsoft.com" in url:
+                                seen.add(url)
+                                # Clean title tags
+                                title = re.sub(r'<[^>]+>', '', titles[i]) if i < len(titles) else "Document"
+                                results.append({"title": title, "url": url, "source": "Bing Dork"})
+        except Exception as e:
+            logger.error(f"Leak search error: {e}")
+            
+        return results
+
+    async def search_darkweb(self, username: str) -> list[dict]:
+        """Perform a search for the username on the Dark Web via Ahmia.fi (Clearweb Tor gateway)."""
+        logger.info(f"Initiating Dark Web Search for {username}")
+        
+        results = []
+        try:
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+            async with self._semaphore:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as session:
+                    headers = self._build_headers()
+                    # Ahmia uses /search/?q=...
+                    url = "https://ahmia.fi/search/"
+                    params = {"q": username}
+                    
+                    async with session.get(url, params=params, headers=headers) as response:
+                        if response.status == 200:
+                            html_text = await response.text()
+                            
+                            # Parse Ahmia results: <li class="result"> <h4> <a href="...">Title</a> </h4> <cite>...onion</cite>
+                            links = re.findall(r'<cite>([^<]+\.onion[^<]*)</cite>', html_text)
+                            titles = re.findall(r'<h4>\s*<a[^>]*>(.*?)</a>\s*</h4>', html_text, re.DOTALL)
+                            
+                            seen = set()
+                            for i, match in enumerate(links):
+                                url = "http://" + match.strip() if not match.startswith("http") else match.strip()
+                                if url not in seen:
+                                    seen.add(url)
+                                    title = re.sub(r'<[^>]+>', '', titles[i]).strip() if i < len(titles) else "Dark Web Link"
+                                    results.append({"title": title, "url": url, "source": "Ahmia.fi"})
+                                    
+        except Exception as e:
+            logger.error(f"Dark Web search error: {e}")
+            
+        return results

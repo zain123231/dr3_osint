@@ -1,170 +1,358 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DR3 OSINT — AI-Powered Digital Intelligence Platform</title>
-    <meta name="description" content="DR3 OSINT Intelligence Platform — AI-powered identity investigation across thousands of platforms.">
+    <title>DR3 Intelligence Platform — منصة استخبارات الهوية الرقمية</title>
+    <meta name="description" content="DR3 — منصة استخبارات هوية رقمية احترافية مدعومة بالذكاء الاصطناعي. Digital Intelligence Correlation Platform.">
     <link rel="stylesheet" href="/static/css/main.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0e17'/><text x='16' y='22' text-anchor='middle' fill='%2300d4ff' font-family='sans-serif' font-weight='bold' font-size='16'>D3</text></svg>">
+    
+    <!-- Geo-Location Map (Leaflet) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Chart.js for Confidence Breakdown -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- ANIMATED CYBER BACKGROUND                     -->
+    <!-- ══════════════════════════════════════════════ -->
+    <canvas id="cyber-bg-canvas"></canvas>
 
-<!-- ── Navigation ── -->
-<nav class="nav">
-    <div class="nav-inner">
-        <a href="/" class="nav-brand">
-            <div class="nav-logo">D3</div>
-            <div>
-                <div class="nav-title">DR3 OSINT</div>
-                <div class="nav-subtitle">Intelligence Platform</div>
-            </div>
-        </a>
-        <div class="nav-status">
-            <div style="display:flex;align-items:center;gap:0.5rem">
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- NAVIGATION — Command Bar                      -->
+    <!-- ══════════════════════════════════════════════ -->
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">
+                <div class="nav-logo">D3</div>
+                <div>
+                    <div class="nav-title">DR3 Intelligence</div>
+                    <div class="nav-subtitle">Digital Identity Intelligence Platform</div>
+                </div>
+            </a>
+            <div class="nav-status">
                 <div class="status-dot"></div>
-                <span class="status-text">System Online</span>
+                <span class="status-text">v3.0</span>
+                <span class="nav-badge" id="stat-sites">—</span>
+                <span class="nav-badge" id="stat-ai">—</span>
             </div>
-            <div class="nav-badge">v2.0.0</div>
         </div>
-    </div>
-</nav>
+    </nav>
 
-<div class="app-container">
+    <main class="app-container">
+        <!-- ══════════════════════════════════════════════ -->
+        <!-- HERO / SEARCH — Command Center                -->
+        <!-- ══════════════════════════════════════════════ -->
+        <section class="hero" id="hero-section">
+            <h1 class="hero-title">Digital Identity Intelligence</h1>
+            <p class="hero-subtitle">
+                ابحث. حقق. اكتشف.<br>
+                منصة استخبارات هوية رقمية مدعومة بالذكاء الاصطناعي.<br>
+                لا تبحث فقط — ابنِ هوية رقمية موثقة.
+            </p>
 
-    <!-- ── Hero / Search ── -->
-    <section class="hero" id="hero-section">
-        <h1 class="hero-title">Digital Intelligence Platform</h1>
-        <p class="hero-subtitle">
-            AI-powered identity investigation across thousands of platforms.
-            Evidence-based analysis. Confidence-scored results.
-        </p>
-
-        <div class="search-container">
-            <div class="search-box">
-                <div class="search-icon">🔍</div>
-                <input
-                    type="text"
-                    class="search-input"
-                    id="search-input"
-                    placeholder="Enter username to investigate..."
-                    autocomplete="off"
-                    spellcheck="false"
-                    maxlength="64"
-                >
-                <button class="search-btn" id="search-btn">
-                    Investigate
-                </button>
-            </div>
-
-            <div class="options-row">
-                <div class="option-chip">
-                    <span>📊</span>
-                    <span>Sites:</span>
-                    <select id="option-sites">
-                        <option value="100">100</option>
-                        <option value="300">300</option>
-                        <option value="500">500</option>
-                        <option value="1000">1000</option>
-                        <option value="99999" selected>All</option>
-                    </select>
+            <div class="search-container">
+                <div class="search-box">
+                    <div class="search-icon">🔍</div>
+                    <input type="text"
+                           id="search-input"
+                           class="search-input"
+                           placeholder="اسم مستخدم، إيميل، أو رابط..."
+                           autocomplete="off"
+                           spellcheck="false">
+                    <button id="search-btn" class="search-btn">تحقيق</button>
                 </div>
-                <div class="option-chip" id="chip-ai" style="cursor:default;">
-                    <span>🧠</span>
-                    <span>AI:</span>
-                    <span id="stat-ai" class="stat-value amber" style="font-size:0.8rem;">Loading...</span>
-                </div>
-                <div class="option-chip" style="cursor:default;">
-                    <span>🌐</span>
-                    <span>DB:</span>
-                    <span id="stat-sites" style="color:var(--accent);font-family:'JetBrains Mono',monospace;">...</span>
+
+                <!-- Toggle for multi-evidence form -->
+                <div style="text-align: center; margin-top: 1rem;">
+                    <button id="toggle-case-form" class="btn" style="font-size: 0.8rem; padding: 0.4rem 1.5rem;">
+                        📋 تحقيق متعدد الأدلة (Case Mode)
+                    </button>
                 </div>
             </div>
-        </div>
-    </section>
 
-    <!-- ── Progress ── -->
-    <section class="progress-section" id="progress-section">
-        <div class="progress-card">
-            <div class="progress-header">
-                <span class="progress-title">🔍 Investigation in Progress</span>
-                <span class="progress-percent">0%</span>
+            <!-- ══════════════════════════════════════════ -->
+            <!-- MULTI-EVIDENCE CASE FORM                  -->
+            <!-- ══════════════════════════════════════════ -->
+            <div class="case-form-section" id="case-form-section" style="display: none;">
+                <div class="case-form-card glass-panel" style="max-width: 800px; margin: 0 auto 2rem; padding: 2rem;">
+                    <h3 style="font-family: 'Orbitron', sans-serif; color: var(--accent); font-size: 1rem; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 1.5rem; text-align: center;">
+                        📋 ملف القضية — Multi-Evidence Investigation
+                    </h3>
+
+                    <div class="case-form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <!-- Case Name -->
+                        <div class="case-field" style="grid-column: 1 / -1;">
+                            <label class="case-label">اسم القضية</label>
+                            <input type="text" id="case-name" class="case-input" placeholder="مثال: Target Alpha">
+                        </div>
+
+                        <!-- Usernames -->
+                        <div class="case-field">
+                            <label class="case-label">👤 أسماء المستخدمين</label>
+                            <input type="text" id="case-usernames" class="case-input" placeholder="dr3, dr3sec, dr3_iq (فاصلة بينهم)">
+                        </div>
+
+                        <!-- Emails -->
+                        <div class="case-field">
+                            <label class="case-label">📧 البريد الإلكتروني</label>
+                            <input type="text" id="case-emails" class="case-input" placeholder="user@example.com (فاصلة بينهم)">
+                        </div>
+
+                        <!-- Phone Numbers -->
+                        <div class="case-field">
+                            <label class="case-label">📱 أرقام الهاتف</label>
+                            <input type="text" id="case-phones" class="case-input" placeholder="+964XXXXXXXXX (فاصلة بينهم)">
+                        </div>
+
+                        <!-- Websites -->
+                        <div class="case-field">
+                            <label class="case-label">🌐 المواقع الإلكترونية</label>
+                            <input type="text" id="case-websites" class="case-input" placeholder="https://example.com (فاصلة بينهم)">
+                        </div>
+
+                        <!-- Locations -->
+                        <div class="case-field">
+                            <label class="case-label">📍 المواقع الجغرافية</label>
+                            <input type="text" id="case-locations" class="case-input" placeholder="Iraq, Baghdad (فاصلة بينهم)">
+                        </div>
+
+                        <!-- Known Accounts -->
+                        <div class="case-field">
+                            <label class="case-label">🔗 حسابات معروفة (platform:username)</label>
+                            <input type="text" id="case-known-accounts" class="case-input" placeholder="github:dr3, twitter:dr3sec (فاصلة بينهم)">
+                        </div>
+
+                        <!-- Notes -->
+                        <div class="case-field" style="grid-column: 1 / -1;">
+                            <label class="case-label">📝 ملاحظات المحقق</label>
+                            <textarea id="case-notes" class="case-input" rows="3" style="resize: vertical;"
+                                      placeholder="معلومات إضافية عن الهدف..."></textarea>
+                        </div>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 1.5rem;">
+                        <button id="case-investigate-btn" class="search-btn" style="padding: 0.8rem 3rem; font-size: 0.9rem;">
+                            🚀 بدء التحقيق
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="progress-bar-outer">
-                <div class="progress-bar-inner"></div>
+
+            <!-- Intelligence Metrics -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-value cyan" id="stat-platforms">—</div>
+                    <div class="stat-label">منصات مدعومة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value green" id="stat-ai-status">—</div>
+                    <div class="stat-label">محرك الذكاء</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value amber" id="stat-investigations">0</div>
+                    <div class="stat-label">تحقيقات سابقة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value cyan" id="stat-evidence-engine">نشط</div>
+                    <div class="stat-label">محرك الأدلة</div>
+                </div>
             </div>
-            <p class="progress-message">Initializing search engine...</p>
-            <div class="progress-stats"></div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ── Results ── -->
-    <section class="results-section" id="results-section">
+        <!-- ══════════════════════════════════════════════ -->
+        <!-- INVESTIGATION PROGRESS — Monitor              -->
+        <!-- ══════════════════════════════════════════════ -->
+        <section class="progress-section" id="progress-section">
+            <div class="progress-card">
+                <!-- Phase indicators -->
+                <div class="phase-indicators" id="phase-indicators">
+                    <div class="phase-dot active" data-phase="seed_resolution">🔍 الهوية الأولية</div>
+                    <div class="phase-dot" data-phase="identity_expansion">🔄 التوسيع</div>
+                    <div class="phase-dot" data-phase="correlation">🔗 الربط</div>
+                    <div class="phase-dot" data-phase="verification">✅ التحقق</div>
+                    <div class="phase-dot" data-phase="ai_analysis">🧠 التحليل</div>
+                    <div class="phase-dot" data-phase="profile_building">📋 الملف</div>
+                </div>
 
-        <!-- Stats Bar -->
-        <div class="stats-bar">
-            <div class="stat-card">
-                <div class="stat-value cyan" id="result-checked">0</div>
-                <div class="stat-label">Sites Checked</div>
+                <div class="progress-header">
+                    <span class="progress-title" id="progress-title">بدء التحقيق...</span>
+                    <span class="progress-percent" id="progress-percent">0%</span>
+                </div>
+
+                <div class="progress-bar-outer">
+                    <div class="progress-bar-inner" id="progress-bar"></div>
+                </div>
+
+                <p class="progress-message" id="progress-message">تهيئة محرك التحقيق...</p>
+
+                <div class="progress-stats" id="progress-stats">
+                    <span>العقد: <strong id="live-nodes">0</strong></span>
+                    <span>العلاقات: <strong id="live-edges">0</strong></span>
+                </div>
+
+                <!-- Live mini graph during investigation -->
+                <canvas id="mini-graph" width="600" height="200" style="display:none; margin-top: 1rem; width: 100%; border-radius: 8px;"></canvas>
+
+                <!-- Terminal Widget — Live Investigation Log -->
+                <div class="terminal-widget" id="terminal-widget">
+                    <div class="terminal-header">
+                        <span class="terminal-dot red"></span>
+                        <span class="terminal-dot yellow"></span>
+                        <span class="terminal-dot green"></span>
+                        <span class="terminal-title">DR3 Intelligence Terminal</span>
+                    </div>
+                    <div class="terminal-body" id="terminal-body">
+                        <div class="terminal-line">
+                            <span class="prompt">&gt;</span> Initializing DR3 Intelligence Engine...
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value green" id="result-found">0</div>
-                <div class="stat-label">Accounts Found</div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════ -->
+        <!-- RESULTS — INVESTIGATION DASHBOARD             -->
+        <!-- ══════════════════════════════════════════════ -->
+        <section class="results-section" id="results-section">
+            <!-- Top bar -->
+            <div class="section-header">
+                <h2 class="section-title">🔍 لوحة التحقيق</h2>
+                <div class="section-actions">
+                    <button class="btn" id="export-json">📥 JSON</button>
+                    <button class="btn" id="export-html" style="background-color: rgba(0,234,255,0.08); border-color: rgba(0,234,255,0.25);">📋 HTML Dossier</button>
+                    <button class="btn" id="export-maltego">🔗 Maltego</button>
+                    <button class="btn" id="export-pdf">📑 PDF</button>
+                    <button class="btn" id="save-watchlist" style="background-color: rgba(181,60,255,0.15); border-color: rgba(181,60,255,0.3);">👁️ مراقبة</button>
+                    <button class="btn btn-primary" id="new-search">🔍 تحقيق جديد</button>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value green" id="result-confirmed">0</div>
-                <div class="stat-label">Confirmed</div>
+
+            <!-- Result Stats -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-value cyan" id="result-checked">0</div>
+                    <div class="stat-label">تم فحصها</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value green" id="result-found">0</div>
+                    <div class="stat-label">مكتشفة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value green" id="result-confirmed">0</div>
+                    <div class="stat-label">مؤكدة</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value amber" id="result-confidence">0%</div>
+                    <div class="stat-label">الثقة الإجمالية</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value amber" id="result-confidence">0%</div>
-                <div class="stat-label">Avg Confidence</div>
+
+            <!-- Identity Profile Card -->
+            <div class="identity-card" id="identity-card" style="display:none;">
+                <div class="identity-header">
+                    <div class="identity-avatar" id="identity-avatar">👤</div>
+                    <div class="identity-info">
+                        <h2 class="identity-name" id="identity-name">—</h2>
+                        <div class="identity-meta" id="identity-meta"></div>
+                    </div>
+                    <div class="identity-confidence" id="identity-confidence">
+                        <div class="confidence-ring">0%</div>
+                        <span class="confidence-label">الثقة</span>
+                    </div>
+                </div>
+                <div class="identity-details" id="identity-details"></div>
             </div>
-        </div>
 
-        <!-- Executive Summary -->
-        <div class="summary-card animate-fade-in">
-            <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.5rem;">Executive Summary</div>
-            <div class="summary-text" id="exec-summary">—</div>
-        </div>
-
-        <!-- Analysis Cards -->
-        <div class="section-header">
-            <h2 class="section-title">🧠 Intelligence Analysis</h2>
-            <span id="search-duration" class="nav-badge"></span>
-        </div>
-        <div class="analysis-grid" id="analysis-grid"></div>
-
-        <!-- Profiles -->
-        <div class="section-header">
-            <h2 class="section-title">👤 Detected Accounts</h2>
-            <div class="section-actions">
-                <button class="btn" id="export-json">📄 JSON</button>
-                <button class="btn" id="export-html">📊 HTML Report</button>
-                <button class="btn btn-primary" id="new-search">🔍 New Search</button>
+            <!-- Executive Summary -->
+            <div class="summary-card">
+                <div class="analysis-card-title">📝 الملخص التنفيذي</div>
+                <p class="summary-text" id="exec-summary">—</p>
             </div>
-        </div>
 
-        <div class="profiles-grid" id="profiles-container"></div>
+            <!-- Intelligence Graph -->
+            <div class="graph-section">
+                <div class="section-header">
+                    <h3 class="section-title">🕸 رسم العلاقات</h3>
+                    <div class="graph-controls">
+                        <button class="btn graph-btn" id="graph-zoom-in">+</button>
+                        <button class="btn graph-btn" id="graph-zoom-out">−</button>
+                        <button class="btn graph-btn" id="graph-reset">↺</button>
+                    </div>
+                </div>
+                <div class="graph-container" id="graph-container" style="width: 100%; height: 500px; position: relative;">
+                    <div id="graph-canvas" style="width: 100%; height: 100%;"></div>
+                </div>
+                <div class="graph-legend">
+                    <span class="legend-item"><span class="legend-dot" style="background:#00ff66;"></span> مؤكد (≥70%)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#00eaff;"></span> متوسط (40-69%)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#ffb000;"></span> ضعيف (10-39%)</span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#ff3b3b;"></span> Seed</span>
+                </div>
+            </div>
 
-        <!-- Next Steps -->
-        <div class="section-header">
-            <h2 class="section-title">📋 Suggested Next Steps</h2>
-        </div>
-        <div class="next-steps">
-            <ul id="next-steps-list"></ul>
-        </div>
+            <!-- Analysis Grid -->
+            <div class="analysis-grid" id="analysis-grid"></div>
 
-    </section>
+            <!-- Confidence Breakdown Chart -->
+            <div class="section-header" style="margin-top: 2rem;">
+                <h3 class="section-title">📊 تحليل الثقة</h3>
+            </div>
+            <div style="background: var(--bg-glass); backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 1.5rem; width: 100%; max-width: 400px; margin: 0 auto;">
+                <canvas id="confidence-chart"></canvas>
+            </div>
 
-</div>
+            <!-- Geo-Location Map -->
+            <div class="section-header" style="margin-top: 2rem;">
+                <h3 class="section-title">🌍 الخريطة الجغرافية</h3>
+            </div>
+            <div id="map-container" style="height: 400px; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--glass-border); z-index: 1;"></div>
 
-<!-- ── Footer ── -->
-<footer class="app-footer">
-    <p>DR3 OSINT Intelligence Platform v2.0.0 — Built with precision for professional OSINT investigations</p>
-    <p style="margin-top:0.5rem;">Powered by <a href="https://t.me/DR3IQ" target="_blank">DR3</a></p>
-</footer>
+            <!-- Verified Accounts -->
+            <div class="section-header" style="margin-top: 2rem;">
+                <h3 class="section-title">✅ الحسابات المؤكدة</h3>
+                <span class="section-subtitle" id="verified-count"></span>
+            </div>
+            <div class="profiles-grid" id="verified-container"></div>
 
-<script src="/static/js/app.js"></script>
+            <!-- Possible Matches -->
+            <div class="section-header" style="margin-top: 2rem;">
+                <h3 class="section-title">❓ احتمالات</h3>
+                <span class="section-subtitle" id="possible-count"></span>
+            </div>
+            <div class="profiles-grid" id="possible-container"></div>
 
+            <!-- Evidence Section -->
+            <div class="evidence-section" id="evidence-section">
+                <div class="section-header">
+                    <h3 class="section-title">📋 سجل الأدلة</h3>
+                </div>
+                <div class="evidence-log" id="evidence-log"></div>
+            </div>
+
+            <!-- Next Steps -->
+            <div class="next-steps" id="next-steps" style="display:none;">
+                <div class="analysis-card-title">🎯 الخطوات التالية المقترحة</div>
+                <ul id="next-steps-list"></ul>
+            </div>
+
+            <!-- Duration -->
+            <div class="app-footer">
+                <span>DR3 Intelligence Platform — مدة التحقيق: <strong id="search-duration">—</strong></span>
+            </div>
+        </section>
+    </main>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- App Scripts -->
+    <script src="/static/js/cyber-bg.js"></script>
+    <script src="/static/js/graph.js"></script>
+    <script src="/static/js/report.js"></script>
+    <script src="/static/js/app.js"></script>
 </body>
 </html>

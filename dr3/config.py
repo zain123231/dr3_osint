@@ -1,71 +1,46 @@
 """
-DR3 OSINT — Central Configuration
+DR3 Intelligence Platform — Configuration
+
+Central configuration with environment variable overrides.
 """
 
 import os
-import secrets
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from .core.constants import (
-    DEFAULT_MAX_CONNECTIONS,
-    DEFAULT_TIMEOUT,
-    DEFAULT_TOP_SITES,
-    DEFAULT_RETRIES,
-)
 
-
-@dataclass
 class Config:
-    """Central configuration for DR3 OSINT platform."""
+    """Application configuration."""
 
-    # Paths
-    base_dir: Path = field(default_factory=lambda: Path(__file__).parent)
-    data_dir: Path = field(default_factory=lambda: Path(__file__).parent / "data")
-    sites_db_path: str = ""
-    reports_dir: str = ""
+    # ── Paths ──
+    BASE_DIR = Path(__file__).parent
+    DATA_DIR = BASE_DIR / "data"
+    SITES_FILE = DATA_DIR / "sites.json"
+    DB_DIR = BASE_DIR / "db"
+    DB_PATH = DB_DIR / "dr3_intelligence.db"
 
-    # Search settings
-    timeout: int = DEFAULT_TIMEOUT
-    max_connections: int = DEFAULT_MAX_CONNECTIONS
-    top_sites: int = DEFAULT_TOP_SITES
-    retries: int = DEFAULT_RETRIES
+    # ── Server ──
+    PORT: int = int(os.getenv("DR3_PORT", "8000"))
+    DEBUG: bool = os.getenv("DR3_DEBUG", "false").lower() == "true"
+    LOG_LEVEL: str = os.getenv("DR3_LOG_LEVEL", "INFO")
 
-    # AI settings
-    gemini_api_key: Optional[str] = None
-    ai_enabled: bool = False
+    # ── AI ──
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
-    # Server settings
-    host: str = "127.0.0.1"
-    port: int = 8000
-    secret_key: str = ""
-    debug: bool = False
+    # ── API Tokens ──
+    GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
 
-    # Logging
-    log_level: str = "INFO"
+    # ── Investigation Defaults ──
+    DEFAULT_MAX_DEPTH: int = int(os.getenv("DR3_MAX_DEPTH", "3"))
+    DEFAULT_MAX_NODES: int = int(os.getenv("DR3_MAX_NODES", "50"))
+    DEFAULT_TIMEOUT: int = int(os.getenv("DR3_TIMEOUT", "15"))
+    MAX_CONNECTIONS: int = int(os.getenv("DR3_MAX_CONNECTIONS", "50"))
 
-    def __post_init__(self):
-        if not self.sites_db_path:
-            self.sites_db_path = str(self.data_dir / "sites.json")
-        if not self.reports_dir:
-            self.reports_dir = str(self.base_dir.parent / "reports")
-        if not self.secret_key:
-            self.secret_key = secrets.token_hex(32)
+    @classmethod
+    def ensure_dirs(cls) -> None:
+        """Ensure required directories exist."""
+        cls.DB_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Load from environment
-        self.gemini_api_key = os.environ.get("GEMINI_API_KEY", self.gemini_api_key)
-        self.ai_enabled = bool(self.gemini_api_key)
-        self.debug = os.environ.get("DR3_DEBUG", "").lower() in ("1", "true", "yes")
-        self.log_level = os.environ.get("DR3_LOG_LEVEL", self.log_level)
-
-        env_port = os.environ.get("DR3_PORT")
-        if env_port:
-            self.port = int(env_port)
-
-        # Ensure dirs exist
-        os.makedirs(self.reports_dir, exist_ok=True)
-
-
-# Global config singleton
-config = Config()
+    @classmethod
+    def ai_available(cls) -> bool:
+        return bool(cls.GEMINI_API_KEY)
