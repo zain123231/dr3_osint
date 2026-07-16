@@ -1086,8 +1086,10 @@ async function saveToWatchlist() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// IMAGE INTELLIGENCE RENDERER
+// IMAGE GEOLOCATION INTELLIGENCE RENDERER v2
 // ═══════════════════════════════════════════════════════════
+let _imgIntelData = null;  // Global ref for filter/sort
+
 function renderImageIntelligence(inv) {
     const section = $('#image-intelligence-section');
     if (!section) return;
@@ -1098,228 +1100,496 @@ function renderImageIntelligence(inv) {
         return;
     }
 
+    _imgIntelData = imgData;
     section.style.display = '';
 
     // Subtitle
     setTextSafe('img-intel-subtitle',
-        `${imgData.total_images_collected} images collected · ${imgData.total_images_analyzed || 0} analyzed`
+        `${imgData.total_images_collected} images · ${imgData.total_images_analyzed || 0} analyzed`
     );
 
     // Assessment
     setTextSafe('img-intel-assessment-text', imgData.assessment || '—');
 
-    // ── Image Gallery ──
+    // ── Geolocation Report Card ──
+    const geo = imgData.geolocation;
+    if (geo && geo.most_probable_location) {
+        const geoCard = $('#geo-report-card');
+        if (geoCard) {
+            geoCard.style.display = '';
+            setTextSafe('geo-location-name', geo.most_probable_location);
+            setTextSafe('geo-confidence-value', `${Math.round(geo.most_probable_confidence * 100)}%`);
+            setTextSafe('geo-evidence-text', geo.evidence_summary || '');
+            setTextSafe('geo-stat-images', geo.total_images || 0);
+            setTextSafe('geo-stat-located', geo.total_with_location || 0);
+            setTextSafe('geo-stat-landmarks', (geo.repeated_landmarks || []).length);
+            setTextSafe('geo-stat-gps', geo.total_with_gps || 0);
+        }
+    }
+
+    // ── Populate filter dropdowns ──
+    _populateFilters(imgData);
+
+    // ── Render Image Gallery ──
+    _renderGallery(imgData);
+
+    // ── Interactive Map ──
+    _renderGeoMap(imgData);
+
+    // ── Location Distribution ──
+    _renderDistribution(imgData);
+
+    // ── Movement Timeline ──
+    _renderTimeline(imgData);
+
+    // ── Face Matches ──
+    _renderFaceMatches(imgData);
+
+    // ── AI Analysis ──
+    _renderAIAnalysis(imgData);
+
+    // ── OCR & Objects ──
+    _renderOCRObjects(imgData);
+
+    // ── Correlations ──
+    _renderCorrelations(imgData);
+}
+
+// ── Gallery Rendering ──
+function _renderGallery(imgData) {
     const galleryGrid = $('#img-gallery-grid');
-    if (galleryGrid && imgData.images && imgData.images.length > 0) {
-        setTextSafe('img-gallery-count', `${imgData.images.length} images`);
-        galleryGrid.innerHTML = imgData.images.map(img => `
-            <div class="img-gallery-card animate-fade-in">
+    if (!galleryGrid) return;
+
+    const images = imgData.images || [];
+    const analyses = imgData.analyses || [];
+    const analysisMap = {};
+    analyses.forEach(a => { if (a.image_id) analysisMap[a.image_id] = a; });
+
+    if (images.length === 0) return;
+    setTextSafe('img-gallery-count', `${images.length} images`);
+
+    galleryGrid.innerHTML = images.map((img, idx) => {
+        const analysis = analysisMap[img.id] || {};
+        const locText = analysis.estimated_city || analysis.estimated_country || '';
+        const confPct = analysis.location_confidence ? Math.round(analysis.location_confidence * 100) : 0;
+
+        return `
+            <div class="img-gallery-card animate-fade-in"
+                 data-idx="${idx}" data-platform="${escapeHtml(img.source_platform)}"
+                 data-country="${escapeHtml(analysis.estimated_country || '')}"
+                 data-confidence="${confPct}" data-date="${escapeHtml(img.date || '')}"
+                 onclick="openLightbox(${idx})">
                 <span class="img-gallery-type">${escapeHtml(img.source_type)}</span>
                 <img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.source_platform)}"
                      loading="lazy" onerror="this.style.display='none'">
                 <div class="img-gallery-meta">
                     <div class="img-gallery-platform">${escapeHtml(img.source_platform)}</div>
                     <div class="img-gallery-username">@${escapeHtml(img.source_username)}</div>
+                    ${locText ? `<div class="img-gallery-location">📍 ${escapeHtml(locText)}</div>` : ''}
+                    ${confPct > 0 ? `<div class="img-gallery-confidence">${confPct}% confidence</div>` : ''}
                 </div>
             </div>
-        `).join('');
-    }
+        `;
+    }).join('');
+}
 
-    // ── Face Matches ──
-    const faceSection = $('#face-match-section');
-    const faceGrid = $('#face-match-grid');
-    if (faceSection && faceGrid && imgData.face_matches && imgData.face_matches.length > 0) {
-        faceSection.style.display = '';
-        faceGrid.innerHTML = imgData.face_matches.map(match => {
-            const simPct = Math.round(match.similarity * 100);
-            const simClass = simPct >= 90 ? 'high' : 'moderate';
-            return `
-                <div class="face-match-card animate-fade-in">
-                    <img class="face-match-img" src="${escapeHtml(match.image_a_url)}"
-                         alt="${escapeHtml(match.image_a_platform)}" onerror="this.style.display='none'">
-                    <span class="face-match-arrow">⟷</span>
-                    <img class="face-match-img" src="${escapeHtml(match.image_b_url)}"
-                         alt="${escapeHtml(match.image_b_platform)}" onerror="this.style.display='none'">
-                    <div class="face-match-info">
-                        <div class="face-match-platforms">
-                            ${escapeHtml(match.image_a_platform)} ↔ ${escapeHtml(match.image_b_platform)}
-                        </div>
-                        <div class="face-match-detail">
-                            @${escapeHtml(match.image_a_username)} ↔ @${escapeHtml(match.image_b_username)}
-                        </div>
-                    </div>
-                    <div class="face-match-similarity ${simClass}">${simPct}%</div>
-                </div>
-            `;
-        }).join('');
-    }
+function _populateFilters(imgData) {
+    const platformSelect = $('#img-filter-platform');
+    const countrySelect = $('#img-filter-country');
+    if (!platformSelect || !countrySelect) return;
 
-    // ── AI Analysis ──
-    const aiSection = $('#ai-analysis-section');
-    const aiGrid = $('#ai-analysis-grid');
-    if (aiSection && aiGrid && imgData.analyses && imgData.analyses.length > 0) {
-        const withContent = imgData.analyses.filter(a => a.description || a.face_description || a.landmarks?.length > 0);
-        if (withContent.length > 0) {
-            aiSection.style.display = '';
-            aiGrid.innerHTML = withContent.map(analysis => {
-                const rows = [];
-                if (analysis.description)
-                    rows.push(['Description', analysis.description]);
-                if (analysis.faces_detected > 0)
-                    rows.push(['Faces', `${analysis.faces_detected} detected`]);
-                if (analysis.face_description)
-                    rows.push(['Face Detail', analysis.face_description]);
-                if (analysis.scene_type)
-                    rows.push(['Scene', analysis.scene_type]);
-                if (analysis.estimated_country)
-                    rows.push(['Country', analysis.estimated_country]);
-                if (analysis.estimated_city)
-                    rows.push(['City', analysis.estimated_city]);
-                if (analysis.weather)
-                    rows.push(['Weather', analysis.weather]);
-                if (analysis.time_of_day)
-                    rows.push(['Time', analysis.time_of_day]);
-                if (analysis.exif_camera)
-                    rows.push(['Camera', analysis.exif_camera]);
-                if (analysis.exif_datetime)
-                    rows.push(['EXIF Date', analysis.exif_datetime]);
-                if (analysis.analysis_method)
-                    rows.push(['Method', analysis.analysis_method]);
+    const platforms = new Set();
+    const countries = new Set();
+    (imgData.images || []).forEach(img => { if (img.source_platform) platforms.add(img.source_platform); });
+    (imgData.analyses || []).forEach(a => { if (a.estimated_country) countries.add(a.estimated_country); });
 
-                return `
-                    <div class="ai-analysis-card animate-fade-in">
-                        <div class="ai-analysis-card-header">
-                            <img src="${escapeHtml(analysis.image_url)}" alt="" onerror="this.style.display='none'">
-                            <div>
-                                <div class="ai-analysis-card-title">${escapeHtml(analysis.source_platform)}</div>
-                                <div class="ai-analysis-card-subtitle">@${escapeHtml(analysis.source_username)}</div>
-                            </div>
-                        </div>
-                        ${rows.map(([key, val]) => `
-                            <div class="ai-analysis-row">
-                                <span class="ai-analysis-key">${escapeHtml(key)}</span>
-                                <span class="ai-analysis-val">${escapeHtml(String(val))}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }).join('');
-        }
-    }
+    platformSelect.innerHTML = '<option value="">All Platforms</option>' +
+        [...platforms].map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    countrySelect.innerHTML = '<option value="">All Countries</option>' +
+        [...countries].map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+}
 
-    // ── OCR & Objects ──
-    const ocrSection = $('#ocr-objects-section');
-    const ocrGrid = $('#ocr-objects-grid');
-    if (ocrSection && ocrGrid) {
-        const hasOcr = imgData.all_ocr_text && imgData.all_ocr_text.length > 0;
-        const hasObj = imgData.all_objects && imgData.all_objects.length > 0;
-        const hasLandmarks = imgData.all_landmarks && imgData.all_landmarks.length > 0;
+// ── Map ──
+function _renderGeoMap(imgData) {
+    const mapSection = $('#img-map-section');
+    const markers = imgData.geolocation?.map_markers || imgData.gps_points || [];
+    if (!mapSection || markers.length === 0) return;
 
-        if (hasOcr || hasObj || hasLandmarks) {
-            ocrSection.style.display = '';
-            let cards = '';
+    mapSection.style.display = '';
+    setTextSafe('img-map-subtitle', `${markers.length} estimated locations`);
 
-            if (hasOcr) {
-                cards += `
-                    <div class="ai-analysis-card animate-fade-in">
-                        <div class="analysis-card-title">◈ OCR Text</div>
-                        ${imgData.all_ocr_text.map(t => `
-                            <div class="ai-analysis-row">
-                                <span class="ai-analysis-val" style="max-width:100%">${escapeHtml(t)}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
-            if (hasObj) {
-                cards += `
-                    <div class="ai-analysis-card animate-fade-in">
-                        <div class="analysis-card-title">◈ Detected Objects</div>
-                        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
-                            ${imgData.all_objects.map(o => `<span class="tag">${escapeHtml(o)}</span>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            if (hasLandmarks) {
-                cards += `
-                    <div class="ai-analysis-card animate-fade-in">
-                        <div class="analysis-card-title">◈ Landmarks</div>
-                        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
-                            ${imgData.all_landmarks.map(l => `<span class="tag" style="border-color:rgba(0,229,255,0.2);color:var(--cyan)">${escapeHtml(l)}</span>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            ocrGrid.innerHTML = cards;
-        }
-    }
-
-    // ── Image Locations Map ──
-    const locSection = $('#img-locations-section');
-    if (locSection && imgData.gps_points && imgData.gps_points.length > 0) {
-        locSection.style.display = '';
-        try {
-            if (window._imgMap) {
-                window._imgMap.remove();
-            }
-            const mapEl = document.getElementById('img-map-container');
-            const map = L.map(mapEl).setView([imgData.gps_points[0].lat, imgData.gps_points[0].lon], 6);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '© CartoDB',
-                maxZoom: 18,
-            }).addTo(map);
-
-            imgData.gps_points.forEach(pt => {
-                L.marker([pt.lat, pt.lon])
-                    .addTo(map)
-                    .bindPopup(`<b>${pt.source}</b><br>GPS: ${pt.lat}, ${pt.lon}`);
-            });
-
-            window._imgMap = map;
-            setTimeout(() => map.invalidateSize(), 200);
-        } catch (e) {
-            console.warn('Image map error:', e);
-        }
-    } else if (locSection && imgData.unique_locations && imgData.unique_locations.length > 0) {
-        // Show locations as text if no GPS
-        locSection.style.display = '';
+    try {
+        if (window._imgMap) window._imgMap.remove();
         const mapEl = document.getElementById('img-map-container');
-        if (mapEl) {
-            mapEl.style.height = 'auto';
-            mapEl.style.padding = '1rem';
-            mapEl.innerHTML = `
-                <div class="analysis-card-title">◈ Estimated Locations (from AI)</div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
-                    ${imgData.unique_locations.map(l => `<span class="tag" style="border-color:rgba(0,229,255,0.2);color:var(--cyan);font-size:11px;padding:3px 8px;">${escapeHtml(l)}</span>`).join('')}
-                </div>
-            `;
-        }
-    }
+        const map = L.map(mapEl).setView([markers[0].lat, markers[0].lon], 5);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© CartoDB', maxZoom: 18,
+        }).addTo(map);
 
-    // ── Correlations ──
-    const corrSection = $('#img-correlations-section');
-    const corrLog = $('#img-correlations-log');
-    if (corrSection && corrLog && imgData.correlations && imgData.correlations.length > 0) {
-        corrSection.style.display = '';
-        corrLog.innerHTML = imgData.correlations.map(corr => {
-            const typeColor = {
-                'face_match': 'var(--neon)',
-                'location_match': 'var(--cyan)',
-                'text_match': 'var(--amber)',
-                'timeline_match': 'var(--purple)',
-            }[corr.type] || 'var(--text-muted)';
-            
-            const confPct = Math.round(corr.confidence * 100);
-            return `
-                <div class="evidence-item animate-fade-in">
-                    <span class="evidence-type positive" style="border-color:${typeColor};color:${typeColor}">
-                        ${escapeHtml(corr.type.replace('_', ' '))}
-                    </span>
-                    <span class="evidence-desc">${escapeHtml(corr.description)}</span>
-                    <span class="evidence-weight positive" style="color:${typeColor}">${confPct}%</span>
+        const markerGroup = L.featureGroup();
+        markers.forEach(m => {
+            const popup = `
+                <div style="font-family:monospace;font-size:11px;max-width:250px;color:#222;">
+                    <div style="margin-bottom:4px;"><img src="${m.image_url}" style="max-width:100%;max-height:120px;border-radius:4px;" onerror="this.style.display='none'"></div>
+                    <b>📍 ${m.location || 'Unknown'}</b><br>
+                    <b>Platform:</b> ${m.platform}<br>
+                    <b>User:</b> @${m.username}<br>
+                    <b>Confidence:</b> ${Math.round((m.confidence||0)*100)}%<br>
+                    ${(m.reasons||[]).length > 0 ? '<b>Reasons:</b> ' + m.reasons.join(', ') : ''}
+                    ${m.post_url ? `<br><a href="${m.post_url}" target="_blank">Open Source</a>` : ''}
                 </div>
             `;
-        }).join('');
+            const marker = L.circleMarker([m.lat, m.lon], {
+                radius: 8, fillColor: '#00ff66', color: '#00ff66',
+                weight: 2, opacity: 0.9, fillOpacity: 0.5,
+            }).bindPopup(popup);
+            markerGroup.addLayer(marker);
+        });
+        markerGroup.addTo(map);
+
+        // Fit bounds
+        if (markers.length > 1) {
+            map.fitBounds(markerGroup.getBounds().pad(0.1));
+        }
+        window._imgMap = map;
+        setTimeout(() => map.invalidateSize(), 200);
+    } catch (e) {
+        console.warn('Map error:', e);
     }
 }
+
+// ── Distribution ──
+function _renderDistribution(imgData) {
+    const distSection = $('#geo-distribution-section');
+    const distGrid = $('#geo-distribution-grid');
+    const geo = imgData.geolocation;
+    if (!distSection || !distGrid || !geo) return;
+
+    const countries = geo.country_distribution || {};
+    const cities = geo.city_distribution || {};
+    if (Object.keys(countries).length === 0 && Object.keys(cities).length === 0) return;
+
+    distSection.style.display = '';
+    const maxCount = Math.max(...Object.values(countries), ...Object.values(cities), 1);
+
+    let html = '';
+    if (Object.keys(countries).length > 0) {
+        html += `<div class="geo-dist-card"><div class="geo-dist-card-title">Countries</div>`;
+        Object.entries(countries).forEach(([name, count]) => {
+            const pct = Math.round((count / maxCount) * 100);
+            html += `<div class="geo-dist-bar">
+                <span class="geo-dist-bar-label">${escapeHtml(name)}</span>
+                <div class="geo-dist-bar-fill"><div class="geo-dist-bar-fill-inner" style="width:${pct}%"></div></div>
+                <span class="geo-dist-bar-count">${count}</span>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+    if (Object.keys(cities).length > 0) {
+        html += `<div class="geo-dist-card"><div class="geo-dist-card-title">Cities</div>`;
+        Object.entries(cities).forEach(([name, count]) => {
+            const pct = Math.round((count / maxCount) * 100);
+            html += `<div class="geo-dist-bar">
+                <span class="geo-dist-bar-label">${escapeHtml(name)}</span>
+                <div class="geo-dist-bar-fill"><div class="geo-dist-bar-fill-inner" style="width:${pct}%"></div></div>
+                <span class="geo-dist-bar-count">${count}</span>
+            </div>`;
+        });
+        html += `</div>`;
+    }
+    distGrid.innerHTML = html;
+}
+
+// ── Timeline ──
+function _renderTimeline(imgData) {
+    const tlSection = $('#movement-timeline-section');
+    const tlContainer = $('#movement-timeline');
+    const events = imgData.geolocation?.movement_timeline || [];
+    if (!tlSection || !tlContainer || events.length === 0) return;
+
+    const withContent = events.filter(e => e.location || e.date);
+    if (withContent.length === 0) return;
+
+    tlSection.style.display = '';
+    tlContainer.innerHTML = withContent.map(e => `
+        <div class="timeline-event animate-fade-in">
+            <div class="timeline-event-header">
+                <img class="timeline-event-img" src="${escapeHtml(e.image_url)}" alt=""
+                     onerror="this.style.display='none'">
+                <div>
+                    <div class="timeline-event-date">${escapeHtml(e.date ? e.date.split('T')[0] : '—')}</div>
+                    <div class="timeline-event-location">📍 ${escapeHtml(e.location || 'Unknown')}</div>
+                </div>
+                <span class="timeline-event-platform">${escapeHtml(e.platform)}</span>
+                ${e.confidence > 0 ? `<span class="timeline-event-confidence">${Math.round(e.confidence*100)}%</span>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+// ── Face Matches ──
+function _renderFaceMatches(imgData) {
+    const faceSection = $('#face-match-section');
+    const faceGrid = $('#face-match-grid');
+    if (!faceSection || !faceGrid || !imgData.face_matches?.length) return;
+
+    faceSection.style.display = '';
+    faceGrid.innerHTML = imgData.face_matches.map(match => {
+        const simPct = Math.round(match.similarity * 100);
+        const simClass = simPct >= 90 ? 'high' : 'moderate';
+        return `
+            <div class="face-match-card animate-fade-in">
+                <img class="face-match-img" src="${escapeHtml(match.image_a_url)}" onerror="this.style.display='none'">
+                <span class="face-match-arrow">⟷</span>
+                <img class="face-match-img" src="${escapeHtml(match.image_b_url)}" onerror="this.style.display='none'">
+                <div class="face-match-info">
+                    <div class="face-match-platforms">${escapeHtml(match.image_a_platform)} ↔ ${escapeHtml(match.image_b_platform)}</div>
+                    <div class="face-match-detail">@${escapeHtml(match.image_a_username)} ↔ @${escapeHtml(match.image_b_username)}</div>
+                </div>
+                <div class="face-match-similarity ${simClass}">${simPct}%</div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ── AI Analysis ──
+function _renderAIAnalysis(imgData) {
+    const aiSection = $('#ai-analysis-section');
+    const aiGrid = $('#ai-analysis-grid');
+    if (!aiSection || !aiGrid || !imgData.analyses?.length) return;
+
+    const withGeo = imgData.analyses.filter(a =>
+        a.description || a.estimated_country || a.landmarks?.length > 0 || a.estimated_city
+    );
+    if (withGeo.length === 0) return;
+
+    aiSection.style.display = '';
+    aiGrid.innerHTML = withGeo.map(analysis => {
+        const rows = [];
+        if (analysis.description) rows.push(['Description', analysis.description]);
+        if (analysis.estimated_country) rows.push(['Country', analysis.estimated_country]);
+        if (analysis.estimated_city) rows.push(['City', analysis.estimated_city]);
+        if (analysis.estimated_district) rows.push(['District', analysis.estimated_district]);
+        if (analysis.location_confidence) rows.push(['Confidence', `${Math.round(analysis.location_confidence*100)}%`]);
+        if (analysis.scene_type) rows.push(['Scene', analysis.scene_type]);
+        if (analysis.architecture_style) rows.push(['Architecture', analysis.architecture_style]);
+        if (analysis.vegetation_type) rows.push(['Vegetation', analysis.vegetation_type]);
+        if (analysis.language_detected) rows.push(['Language', analysis.language_detected]);
+        if (analysis.weather) rows.push(['Weather', analysis.weather]);
+        if (analysis.time_of_day) rows.push(['Time', analysis.time_of_day]);
+        if (analysis.season) rows.push(['Season', analysis.season]);
+        if (analysis.faces_detected > 0) rows.push(['Faces', `${analysis.faces_detected}`]);
+        if (analysis.exif_camera) rows.push(['Camera', analysis.exif_camera]);
+        if (analysis.exif_datetime) rows.push(['EXIF Date', analysis.exif_datetime]);
+
+        const reasonsHtml = (analysis.location_reasons || []).length > 0
+            ? `<div style="margin-top:4px;font-size:9px;color:var(--text-dim);">
+                <b>Reasons:</b> ${analysis.location_reasons.slice(0,5).map(r => escapeHtml(r)).join(', ')}
+               </div>` : '';
+
+        return `
+            <div class="ai-analysis-card animate-fade-in">
+                <div class="ai-analysis-card-header">
+                    <img src="${escapeHtml(analysis.image_url)}" alt="" onerror="this.style.display='none'">
+                    <div>
+                        <div class="ai-analysis-card-title">${escapeHtml(analysis.source_platform)}</div>
+                        <div class="ai-analysis-card-subtitle">@${escapeHtml(analysis.source_username)}</div>
+                    </div>
+                </div>
+                ${rows.map(([k,v]) => `<div class="ai-analysis-row"><span class="ai-analysis-key">${escapeHtml(k)}</span><span class="ai-analysis-val">${escapeHtml(String(v))}</span></div>`).join('')}
+                ${reasonsHtml}
+            </div>
+        `;
+    }).join('');
+}
+
+// ── OCR & Objects ──
+function _renderOCRObjects(imgData) {
+    const ocrSection = $('#ocr-objects-section');
+    const ocrGrid = $('#ocr-objects-grid');
+    if (!ocrSection || !ocrGrid) return;
+
+    const hasOcr = imgData.all_ocr_text?.length > 0;
+    const hasObj = imgData.all_objects?.length > 0;
+    const hasLandmarks = imgData.all_landmarks?.length > 0;
+    if (!hasOcr && !hasObj && !hasLandmarks) return;
+
+    ocrSection.style.display = '';
+    let cards = '';
+    if (hasLandmarks) {
+        cards += `<div class="ai-analysis-card animate-fade-in"><div class="analysis-card-title">◈ Landmarks</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+                ${imgData.all_landmarks.map(l => `<span class="tag" style="border-color:rgba(0,229,255,0.2);color:var(--cyan)">${escapeHtml(l)}</span>`).join('')}
+            </div></div>`;
+    }
+    if (hasOcr) {
+        cards += `<div class="ai-analysis-card animate-fade-in"><div class="analysis-card-title">◈ OCR Text</div>
+            ${imgData.all_ocr_text.map(t => `<div class="ai-analysis-row"><span class="ai-analysis-val" style="max-width:100%">${escapeHtml(t)}</span></div>`).join('')}
+            </div>`;
+    }
+    if (hasObj) {
+        cards += `<div class="ai-analysis-card animate-fade-in"><div class="analysis-card-title">◈ Objects</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+                ${imgData.all_objects.map(o => `<span class="tag">${escapeHtml(o)}</span>`).join('')}
+            </div></div>`;
+    }
+    ocrGrid.innerHTML = cards;
+}
+
+// ── Correlations ──
+function _renderCorrelations(imgData) {
+    const corrSection = $('#img-correlations-section');
+    const corrLog = $('#img-correlations-log');
+    if (!corrSection || !corrLog || !imgData.correlations?.length) return;
+
+    corrSection.style.display = '';
+    corrLog.innerHTML = imgData.correlations.map(corr => {
+        const typeColor = {
+            'face_match': 'var(--neon)', 'location_match': 'var(--cyan)',
+            'text_match': 'var(--amber)', 'timeline_match': 'var(--purple)',
+        }[corr.type] || 'var(--text-muted)';
+        const confPct = Math.round((corr.confidence||0) * 100);
+        return `
+            <div class="evidence-item animate-fade-in">
+                <span class="evidence-type positive" style="border-color:${typeColor};color:${typeColor}">
+                    ${escapeHtml((corr.type||'').replace('_', ' '))}
+                </span>
+                <span class="evidence-desc">${escapeHtml(corr.description)}</span>
+                <span class="evidence-weight positive" style="color:${typeColor}">${confPct}%</span>
+            </div>
+        `;
+    }).join('');
+}
+
+// ── Lightbox ──
+window.openLightbox = function(idx) {
+    const imgData = _imgIntelData;
+    if (!imgData) return;
+    const img = (imgData.images || [])[idx];
+    if (!img) return;
+
+    const analysisMap = {};
+    (imgData.analyses || []).forEach(a => { if (a.image_id) analysisMap[a.image_id] = a; });
+    const analysis = analysisMap[img.id] || {};
+
+    const lightbox = $('#img-lightbox');
+    const lbImage = $('#lightbox-image');
+    const sidebar = $('#lightbox-sidebar');
+    if (!lightbox || !lbImage || !sidebar) return;
+
+    lbImage.src = img.url;
+    lightbox.style.display = 'flex';
+
+    // Build sidebar
+    let html = '';
+    html += `<div class="lightbox-section-title">Source</div>`;
+    html += `<div class="lightbox-row"><span class="lightbox-key">Platform</span><span class="lightbox-val">${escapeHtml(img.source_platform)}</span></div>`;
+    html += `<div class="lightbox-row"><span class="lightbox-key">User</span><span class="lightbox-val">@${escapeHtml(img.source_username)}</span></div>`;
+    html += `<div class="lightbox-row"><span class="lightbox-key">Type</span><span class="lightbox-val">${escapeHtml(img.source_type)}</span></div>`;
+    if (img.date) html += `<div class="lightbox-row"><span class="lightbox-key">Date</span><span class="lightbox-val">${escapeHtml(img.date.split('T')[0])}</span></div>`;
+    if (img.caption) html += `<div class="lightbox-row"><span class="lightbox-key">Caption</span><span class="lightbox-val">${escapeHtml(img.caption.substring(0,100))}</span></div>`;
+    if (img.post_url) html += `<div class="lightbox-row"><span class="lightbox-key">Source</span><span class="lightbox-val"><a href="${escapeHtml(img.post_url)}" target="_blank" style="color:var(--cyan)">Open ↗</a></span></div>`;
+
+    if (analysis.estimated_country || analysis.estimated_city) {
+        html += `<div class="lightbox-section-title">Location Estimate</div>`;
+        if (analysis.estimated_country) html += `<div class="lightbox-row"><span class="lightbox-key">Country</span><span class="lightbox-val">${escapeHtml(analysis.estimated_country)}</span></div>`;
+        if (analysis.estimated_state) html += `<div class="lightbox-row"><span class="lightbox-key">State</span><span class="lightbox-val">${escapeHtml(analysis.estimated_state)}</span></div>`;
+        if (analysis.estimated_city) html += `<div class="lightbox-row"><span class="lightbox-key">City</span><span class="lightbox-val">${escapeHtml(analysis.estimated_city)}</span></div>`;
+        if (analysis.estimated_district) html += `<div class="lightbox-row"><span class="lightbox-key">District</span><span class="lightbox-val">${escapeHtml(analysis.estimated_district)}</span></div>`;
+        if (analysis.location_confidence) html += `<div class="lightbox-row"><span class="lightbox-key">Confidence</span><span class="lightbox-val" style="color:var(--neon)">${Math.round(analysis.location_confidence*100)}%</span></div>`;
+        if (analysis.estimated_coords) html += `<div class="lightbox-row"><span class="lightbox-key">Coords</span><span class="lightbox-val">${analysis.estimated_coords.lat}, ${analysis.estimated_coords.lon}</span></div>`;
+    }
+
+    if (analysis.location_reasons?.length > 0) {
+        html += `<div class="lightbox-section-title">Reasons</div>`;
+        analysis.location_reasons.forEach(r => { html += `<div class="lightbox-tag">${escapeHtml(r)}</div>`; });
+    }
+
+    if (analysis.description || analysis.scene_type) {
+        html += `<div class="lightbox-section-title">Visual Analysis</div>`;
+        if (analysis.description) html += `<div class="lightbox-row"><span class="lightbox-key">Desc</span><span class="lightbox-val">${escapeHtml(analysis.description.substring(0,120))}</span></div>`;
+        if (analysis.scene_type) html += `<div class="lightbox-row"><span class="lightbox-key">Scene</span><span class="lightbox-val">${escapeHtml(analysis.scene_type)}</span></div>`;
+        if (analysis.architecture_style) html += `<div class="lightbox-row"><span class="lightbox-key">Architecture</span><span class="lightbox-val">${escapeHtml(analysis.architecture_style)}</span></div>`;
+        if (analysis.weather) html += `<div class="lightbox-row"><span class="lightbox-key">Weather</span><span class="lightbox-val">${escapeHtml(analysis.weather)}</span></div>`;
+        if (analysis.language_detected) html += `<div class="lightbox-row"><span class="lightbox-key">Language</span><span class="lightbox-val">${escapeHtml(analysis.language_detected)}</span></div>`;
+    }
+
+    if (analysis.landmarks?.length > 0) {
+        html += `<div class="lightbox-section-title">Landmarks</div>`;
+        analysis.landmarks.forEach(l => { html += `<div class="lightbox-tag" style="border-color:rgba(0,229,255,0.2);color:var(--cyan)">${escapeHtml(l)}</div>`; });
+    }
+
+    if (analysis.ocr_text?.length > 0) {
+        html += `<div class="lightbox-section-title">OCR Text</div>`;
+        analysis.ocr_text.forEach(t => { html += `<div class="lightbox-tag">${escapeHtml(t)}</div>`; });
+    }
+
+    if (analysis.objects?.length > 0) {
+        html += `<div class="lightbox-section-title">Objects</div>`;
+        analysis.objects.forEach(o => { html += `<div class="lightbox-tag">${escapeHtml(o)}</div>`; });
+    }
+
+    if (analysis.exif_camera || analysis.exif_datetime || analysis.exif_gps) {
+        html += `<div class="lightbox-section-title">EXIF Data</div>`;
+        if (analysis.exif_camera) html += `<div class="lightbox-row"><span class="lightbox-key">Camera</span><span class="lightbox-val">${escapeHtml(analysis.exif_camera)}</span></div>`;
+        if (analysis.exif_datetime) html += `<div class="lightbox-row"><span class="lightbox-key">Date</span><span class="lightbox-val">${escapeHtml(analysis.exif_datetime)}</span></div>`;
+        if (analysis.exif_gps) html += `<div class="lightbox-row"><span class="lightbox-key">GPS</span><span class="lightbox-val">${analysis.exif_gps.lat}, ${analysis.exif_gps.lon}</span></div>`;
+    }
+
+    sidebar.innerHTML = html;
+};
+
+window.closeLightbox = function(event) {
+    const lightbox = $('#img-lightbox');
+    if (lightbox) lightbox.style.display = 'none';
+};
+
+// ── View Toggle ──
+window.setImgView = function(mode) {
+    const grid = $('#img-gallery-grid');
+    if (!grid) return;
+    if (mode === 'list') {
+        grid.classList.add('list-view');
+        $('#img-view-grid')?.classList.remove('active');
+        $('#img-view-list')?.classList.add('active');
+    } else {
+        grid.classList.remove('list-view');
+        $('#img-view-grid')?.classList.add('active');
+        $('#img-view-list')?.classList.remove('active');
+    }
+};
+
+// ── Filter ──
+window.filterImages = function() {
+    const platform = $('#img-filter-platform')?.value || '';
+    const country = $('#img-filter-country')?.value || '';
+    const cards = $$('#img-gallery-grid .img-gallery-card');
+    cards.forEach(card => {
+        const cPlatform = card.dataset.platform || '';
+        const cCountry = card.dataset.country || '';
+        const showP = !platform || cPlatform === platform;
+        const showC = !country || cCountry === country;
+        card.style.display = (showP && showC) ? '' : 'none';
+    });
+};
+
+// ── Sort ──
+window.sortImages = function() {
+    const sortBy = $('#img-sort')?.value || 'confidence';
+    const grid = $('#img-gallery-grid');
+    if (!grid) return;
+    const cards = [...grid.querySelectorAll('.img-gallery-card')];
+    cards.sort((a, b) => {
+        if (sortBy === 'confidence') return (parseInt(b.dataset.confidence)||0) - (parseInt(a.dataset.confidence)||0);
+        if (sortBy === 'date') return (b.dataset.date||'').localeCompare(a.dataset.date||'');
+        if (sortBy === 'platform') return (a.dataset.platform||'').localeCompare(b.dataset.platform||'');
+        return 0;
+    });
+    cards.forEach(c => grid.appendChild(c));
+};
+
+// ESC to close lightbox
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeLightbox();
+});
+

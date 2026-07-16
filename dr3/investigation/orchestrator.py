@@ -370,59 +370,78 @@ class InvestigationOrchestrator:
             self.confidence_engine.score_investigation(investigation)
 
             # ═══════════════════════════════════════════════════
-            # PHASE 9: IMAGE INTELLIGENCE
+            # PHASE 9: IMAGE INTELLIGENCE + GEOLOCATION
             # ═══════════════════════════════════════════════════
             investigation.current_phase = InvestigationPhase.IMAGE_INTELLIGENCE
-            await emit("image_intelligence", 90, "بدء تحليل الصور العامة المكتشفة...")
+            await emit("image_intelligence", 88, "بدء محرك استخبارات الصور والتحديد الجغرافي...")
 
             try:
                 from ..imaging.image_collector import ImageCollector
                 from ..imaging.image_hasher import ImageHasher
                 from ..imaging.image_analyzer import ImageAnalyzer
                 from ..imaging.image_correlator import ImageCorrelator
+                from ..imaging.image_geo import GeolocationEngine
 
-                # Collect images from discovered nodes
+                # Step 1: Collect images from ALL sources
                 img_collector = ImageCollector()
                 
                 async def img_progress(msg):
-                    await emit("image_intelligence", 92, msg)
+                    await emit("image_intelligence", 89, msg)
 
                 image_assets = await img_collector.collect(investigation, progress_callback=img_progress)
                 await img_collector.close()
 
                 if image_assets:
-                    await emit("image_intelligence", 93, f"تم جمع {len(image_assets)} صورة — بدء التحليل...")
+                    await emit("image_intelligence", 91, f"تم جمع {len(image_assets)} صورة عامة — بدء التحليل العميق...")
 
-                    # Compute perceptual hashes and find matches
+                    # Step 2: Perceptual hash matching
                     hasher = ImageHasher()
                     hash_matches = hasher.find_matches(image_assets)
 
                     if hash_matches:
-                        await emit("image_intelligence", 94, f"تم اكتشاف {len(hash_matches)} تطابق بصري بين الصور!")
+                        await emit("image_intelligence", 92, f"تم اكتشاف {len(hash_matches)} تطابق بصري بين الصور!")
 
-                    # Analyze images (Gemini Vision or EXIF fallback)
+                    # Step 3: Deep AI analysis (Gemini Vision or EXIF fallback)
                     analyzer = ImageAnalyzer(gemini_api_key=self.gemini_key)
                     
                     async def analysis_progress(msg):
-                        await emit("image_intelligence", 95, msg)
+                        await emit("image_intelligence", 93, msg)
                     
                     analyses = await analyzer.analyze_all(image_assets, progress_callback=analysis_progress)
 
-                    await emit("image_intelligence", 97, "ربط نتائج الصور مع بيانات التحقيق...")
+                    # Step 4: Geolocation engine
+                    await emit("image_intelligence", 95, "تشغيل محرك التحديد الجغرافي...")
+                    geo_engine = GeolocationEngine()
+                    geo_report = geo_engine.analyze(image_assets, analyses)
 
-                    # Cross-correlate with OSINT data
+                    if geo_report.most_probable_location:
+                        await emit("image_intelligence", 96,
+                            f"الموقع الأكثر احتمالاً: {geo_report.most_probable_location} "
+                            f"({geo_report.most_probable_confidence:.0%})"
+                        )
+
+                    # Step 5: Cross-correlate with OSINT data
+                    await emit("image_intelligence", 97, "ربط نتائج الصور مع بيانات التحقيق...")
                     correlator = ImageCorrelator()
-                    img_report = correlator.correlate(image_assets, analyses, hash_matches, investigation)
+                    img_report = correlator.correlate(
+                        image_assets, analyses, hash_matches, investigation, geo_report
+                    )
 
                     # Store in investigation
                     if not investigation.extra_data:
                         investigation.extra_data = {}
                     investigation.extra_data["image_intelligence"] = img_report.to_dict()
 
+                    geo_msg = ""
+                    if geo_report.most_probable_location:
+                        geo_msg = f"، موقع محتمل: {geo_report.most_probable_location}"
+
                     await emit("image_intelligence", 98,
-                        f"اكتمل تحليل الصور: {len(image_assets)} صورة، "
+                        f"اكتمل: {len(image_assets)} صورة، "
                         f"{img_report.faces_detected} وجه، "
-                        f"{len(hash_matches)} تطابق"
+                        f"{len(hash_matches)} تطابق، "
+                        f"{geo_report.total_with_location} موقع مقدر"
+                        f"{geo_msg}"
                     )
                 else:
                     await emit("image_intelligence", 98, "لا توجد صور عامة متاحة للتحليل")

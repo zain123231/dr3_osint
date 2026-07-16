@@ -374,31 +374,99 @@
             </div>
 
             <!-- ══════════════════════════════════════════════ -->
-            <!-- IMAGE INTELLIGENCE SECTION                    -->
+            <!-- IMAGE GEOLOCATION INTELLIGENCE v2             -->
             <!-- ══════════════════════════════════════════════ -->
             <div id="image-intelligence-section" style="display:none; margin-top: 2rem;">
                 <div class="section-header">
-                    <h3 class="section-title">◈ Public Image Intelligence</h3>
+                    <h3 class="section-title">◈ Public Image Geolocation Intelligence</h3>
                     <span class="section-subtitle" id="img-intel-subtitle"></span>
                 </div>
 
-                <!-- Image Intelligence Assessment -->
+                <!-- Geolocation Report Card -->
+                <div class="geo-report-card" id="geo-report-card" style="display:none;">
+                    <div class="geo-report-header">
+                        <div class="geo-report-icon">📍</div>
+                        <div class="geo-report-main">
+                            <div class="geo-report-label">MOST PROBABLE LOCATION</div>
+                            <div class="geo-report-location" id="geo-location-name">—</div>
+                        </div>
+                        <div class="geo-report-confidence">
+                            <div class="geo-confidence-value" id="geo-confidence-value">0%</div>
+                            <div class="geo-confidence-label">CONFIDENCE</div>
+                        </div>
+                    </div>
+                    <div class="geo-report-evidence" id="geo-evidence-text"></div>
+                    <div class="geo-report-stats">
+                        <div class="geo-stat"><span class="geo-stat-val" id="geo-stat-images">0</span><span class="geo-stat-lbl">IMAGES</span></div>
+                        <div class="geo-stat"><span class="geo-stat-val" id="geo-stat-located">0</span><span class="geo-stat-lbl">LOCATED</span></div>
+                        <div class="geo-stat"><span class="geo-stat-val" id="geo-stat-landmarks">0</span><span class="geo-stat-lbl">LANDMARKS</span></div>
+                        <div class="geo-stat"><span class="geo-stat-val" id="geo-stat-gps">0</span><span class="geo-stat-lbl">GPS</span></div>
+                    </div>
+                </div>
+
+                <!-- Assessment -->
                 <div class="summary-card" id="img-intel-assessment">
-                    <div class="analysis-card-title">◈ Image Intelligence Assessment</div>
+                    <div class="analysis-card-title">◈ Intelligence Assessment</div>
                     <p class="summary-text" id="img-intel-assessment-text">—</p>
                 </div>
 
+                <!-- Gallery Toolbar -->
+                <div class="img-toolbar" id="img-toolbar">
+                    <div class="img-toolbar-left">
+                        <button class="img-toolbar-btn active" id="img-view-grid" onclick="setImgView('grid')">▦ Grid</button>
+                        <button class="img-toolbar-btn" id="img-view-list" onclick="setImgView('list')">☰ List</button>
+                    </div>
+                    <div class="img-toolbar-right">
+                        <select class="img-filter-select" id="img-filter-platform" onchange="filterImages()">
+                            <option value="">All Platforms</option>
+                        </select>
+                        <select class="img-filter-select" id="img-filter-country" onchange="filterImages()">
+                            <option value="">All Countries</option>
+                        </select>
+                        <select class="img-sort-select" id="img-sort" onchange="sortImages()">
+                            <option value="confidence">Sort: Confidence</option>
+                            <option value="date">Sort: Date</option>
+                            <option value="platform">Sort: Platform</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Image Gallery -->
-                <div class="section-header" style="margin-top: 1.5rem;">
+                <div class="section-header" style="margin-top: 0.8rem;">
                     <h4 class="section-title" style="font-size: 0.75rem;">◈ Collected Images</h4>
                     <span class="section-subtitle" id="img-gallery-count"></span>
                 </div>
                 <div class="img-gallery-grid" id="img-gallery-grid"></div>
 
-                <!-- Face Match Grid -->
+                <!-- Interactive Map -->
+                <div id="img-map-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Geolocation Map</h4>
+                        <span class="section-subtitle" id="img-map-subtitle"></span>
+                    </div>
+                    <div id="img-map-container" style="height: 420px; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-dim); z-index: 1;"></div>
+                </div>
+
+                <!-- Country / City Distribution -->
+                <div id="geo-distribution-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Location Distribution</h4>
+                    </div>
+                    <div class="geo-distribution-grid" id="geo-distribution-grid"></div>
+                </div>
+
+                <!-- Movement Timeline -->
+                <div id="movement-timeline-section" style="display:none; margin-top: 1.5rem;">
+                    <div class="section-header">
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Movement Timeline</h4>
+                    </div>
+                    <div class="movement-timeline" id="movement-timeline"></div>
+                </div>
+
+                <!-- Face / Image Matches -->
                 <div id="face-match-section" style="display:none; margin-top: 1.5rem;">
                     <div class="section-header">
-                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Face / Image Matches</h4>
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Image Similarity Matches</h4>
                     </div>
                     <div id="face-match-grid" class="face-match-grid"></div>
                 </div>
@@ -406,12 +474,12 @@
                 <!-- AI Analysis Results -->
                 <div id="ai-analysis-section" style="display:none; margin-top: 1.5rem;">
                     <div class="section-header">
-                        <h4 class="section-title" style="font-size: 0.75rem;">◈ AI Image Analysis</h4>
+                        <h4 class="section-title" style="font-size: 0.75rem;">◈ AI Geolocation Analysis</h4>
                     </div>
                     <div class="analysis-grid" id="ai-analysis-grid"></div>
                 </div>
 
-                <!-- Detected Objects & OCR -->
+                <!-- OCR & Objects -->
                 <div id="ocr-objects-section" style="display:none; margin-top: 1.5rem;">
                     <div class="section-header">
                         <h4 class="section-title" style="font-size: 0.75rem;">◈ Detected Text & Objects</h4>
@@ -419,20 +487,25 @@
                     <div class="analysis-grid" id="ocr-objects-grid"></div>
                 </div>
 
-                <!-- Image Locations Map -->
-                <div id="img-locations-section" style="display:none; margin-top: 1.5rem;">
-                    <div class="section-header">
-                        <h4 class="section-title" style="font-size: 0.75rem;">◈ Image Geolocation</h4>
-                    </div>
-                    <div id="img-map-container" style="height: 350px; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-dim); z-index: 1;"></div>
-                </div>
-
-                <!-- Image Correlations -->
+                <!-- Correlations -->
                 <div id="img-correlations-section" style="display:none; margin-top: 1.5rem;">
                     <div class="section-header">
                         <h4 class="section-title" style="font-size: 0.75rem;">◈ Image-OSINT Correlations</h4>
                     </div>
                     <div class="evidence-log" id="img-correlations-log"></div>
+                </div>
+            </div>
+
+            <!-- Image Lightbox -->
+            <div class="img-lightbox" id="img-lightbox" style="display:none;" onclick="closeLightbox(event)">
+                <div class="img-lightbox-content" onclick="event.stopPropagation()">
+                    <button class="img-lightbox-close" onclick="closeLightbox()">&times;</button>
+                    <div class="img-lightbox-body">
+                        <div class="img-lightbox-image-wrap">
+                            <img id="lightbox-image" src="" alt="">
+                        </div>
+                        <div class="img-lightbox-sidebar" id="lightbox-sidebar"></div>
+                    </div>
                 </div>
             </div>
 

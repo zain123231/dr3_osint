@@ -1,13 +1,8 @@
 """
-DR3 Intelligence Platform — Image Correlator
+DR3 Intelligence Platform — Image Correlator v2
 
-Cross-correlates image analysis findings with existing OSINT data:
-- OCR text matched against usernames, emails, domains
-- Estimated locations matched against known profile locations
-- Face groups confirm/deny same-person hypothesis
-- EXIF timestamps vs account creation dates
-
-Produces a combined ImageIntelligenceReport.
+Cross-correlates image analysis with OSINT data and
+produces the combined ImageIntelligenceReport.
 """
 
 import logging
@@ -17,48 +12,29 @@ from typing import Any, Dict, List
 logger = logging.getLogger("dr3.imaging.correlator")
 
 
-@dataclass 
-class ImageCorrelation:
-    """A single correlation finding."""
-    correlation_type: str = ""   # face_match, location_match, text_match, timeline_match
-    description: str = ""
-    confidence: float = 0.0
-    evidence: str = ""
-    source_image_id: str = ""
-    related_node_id: str = ""
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "type": self.correlation_type,
-            "description": self.description,
-            "confidence": round(self.confidence, 2),
-            "evidence": self.evidence,
-            "source_image_id": self.source_image_id,
-            "related_node_id": self.related_node_id,
-        }
-
-
 @dataclass
 class ImageIntelligenceReport:
-    """Combined image intelligence assessment."""
+    """Combined image + geolocation intelligence."""
     total_images_collected: int = 0
     total_images_analyzed: int = 0
-    face_matches: List[dict] = field(default_factory=list)
-    analyses: List[dict] = field(default_factory=list)
-    correlations: List[dict] = field(default_factory=list)
+
+    # Image data
     images: List[dict] = field(default_factory=list)
-    
-    # Aggregate findings
+    analyses: List[dict] = field(default_factory=list)
+    face_matches: List[dict] = field(default_factory=list)
+    correlations: List[dict] = field(default_factory=list)
+
+    # Geolocation
+    geolocation: dict = field(default_factory=dict)
+
+    # Aggregates
     faces_detected: int = 0
-    unique_locations: List[str] = field(default_factory=list)
     all_ocr_text: List[str] = field(default_factory=list)
     all_landmarks: List[str] = field(default_factory=list)
     all_objects: List[str] = field(default_factory=list)
-    
-    # Locations with GPS
+    unique_locations: List[str] = field(default_factory=list)
     gps_points: List[dict] = field(default_factory=list)
-    
-    # Overall assessment
+
     assessment: str = ""
     confidence: float = 0.0
 
@@ -66,15 +42,16 @@ class ImageIntelligenceReport:
         return {
             "total_images_collected": self.total_images_collected,
             "total_images_analyzed": self.total_images_analyzed,
-            "face_matches": self.face_matches,
-            "analyses": self.analyses,
-            "correlations": self.correlations,
             "images": self.images,
+            "analyses": self.analyses,
+            "face_matches": self.face_matches,
+            "correlations": self.correlations,
+            "geolocation": self.geolocation,
             "faces_detected": self.faces_detected,
-            "unique_locations": self.unique_locations,
             "all_ocr_text": self.all_ocr_text,
             "all_landmarks": self.all_landmarks,
             "all_objects": self.all_objects,
+            "unique_locations": self.unique_locations,
             "gps_points": self.gps_points,
             "assessment": self.assessment,
             "confidence": round(self.confidence, 2),
@@ -82,29 +59,10 @@ class ImageIntelligenceReport:
 
 
 class ImageCorrelator:
-    """
-    Cross-correlates image findings with OSINT investigation data.
-    """
+    """Cross-correlates image findings with OSINT investigation data."""
 
-    def correlate(
-        self,
-        assets: list,
-        analyses: list,
-        hash_matches: list,
-        investigation,
-    ) -> ImageIntelligenceReport:
-        """
-        Produce combined image intelligence report.
-        
-        Args:
-            assets: List of ImageAsset
-            analyses: List of ImageAnalysis
-            hash_matches: List of HashMatch
-            investigation: The Investigation object
-            
-        Returns:
-            ImageIntelligenceReport with all findings
-        """
+    def correlate(self, assets, analyses, hash_matches, investigation, geo_report=None):
+        """Produce combined image intelligence report."""
         report = ImageIntelligenceReport(
             total_images_collected=len(assets),
             total_images_analyzed=len(analyses),
@@ -113,72 +71,67 @@ class ImageCorrelator:
             images=[a.to_dict() for a in assets],
         )
 
+        if geo_report:
+            report.geolocation = geo_report.to_dict()
+
         correlations = []
-
-        # ── 1. Face Match Correlations ──
-        for match in hash_matches:
-            corr = ImageCorrelation(
-                correlation_type="face_match",
-                description=(
-                    f"تطابق بصري بين صورة {match.image_a_platform}/{match.image_a_username} "
-                    f"و {match.image_b_platform}/{match.image_b_username}"
-                ),
-                confidence=match.similarity,
-                evidence=f"Perceptual hash similarity: {match.similarity:.1%}",
-                source_image_id=match.image_a_id,
-            )
-            correlations.append(corr)
-
-        # ── 2. Aggregate Findings ──
         total_faces = 0
         locations = set()
-        ocr_texts = []
-        landmarks_all = []
-        objects_all = []
+        ocr_texts = set()
+        landmarks_all = set()
+        objects_all = set()
         gps_points = []
 
         for analysis in analyses:
             total_faces += analysis.faces_detected
 
-            # Locations
             if analysis.estimated_country:
                 locations.add(analysis.estimated_country)
             if analysis.estimated_city:
-                locations.add(f"{analysis.estimated_city}, {analysis.estimated_country}")
+                loc = f"{analysis.estimated_city}, {analysis.estimated_country}" if analysis.estimated_country else analysis.estimated_city
+                locations.add(loc)
 
-            # GPS
-            if analysis.exif_gps_lat is not None:
+            lat = analysis.estimated_lat or analysis.exif_gps_lat
+            lon = analysis.estimated_lon or analysis.exif_gps_lon
+            if lat is not None:
                 gps_points.append({
-                    "lat": analysis.exif_gps_lat,
-                    "lon": analysis.exif_gps_lon,
+                    "lat": lat, "lon": lon,
                     "source": f"{analysis.source_platform}/{analysis.source_username}",
                     "image_id": analysis.image_id,
+                    "confidence": analysis.location_confidence,
+                    "location": analysis.estimated_city or analysis.estimated_country or "",
                 })
 
-            # OCR
             for text in analysis.ocr_text:
                 if text.strip():
-                    ocr_texts.append(text.strip())
-
-            # Landmarks
+                    ocr_texts.add(text.strip())
             for lm in analysis.landmarks:
                 if lm.strip():
-                    landmarks_all.append(lm.strip())
-
-            # Objects
+                    landmarks_all.add(lm.strip())
             for obj in analysis.objects:
                 if obj.strip():
-                    objects_all.append(obj.strip())
+                    objects_all.add(obj.strip())
 
         report.faces_detected = total_faces
         report.unique_locations = list(locations)
-        report.all_ocr_text = list(set(ocr_texts))
-        report.all_landmarks = list(set(landmarks_all))
-        report.all_objects = list(set(objects_all))[:20]  # Cap at 20
+        report.all_ocr_text = list(ocr_texts)[:30]
+        report.all_landmarks = list(landmarks_all)[:20]
+        report.all_objects = list(objects_all)[:30]
         report.gps_points = gps_points
 
-        # ── 3. Location Correlation ──
-        # Compare image-estimated locations with profile locations
+        # ── Face match correlations ──
+        for match in hash_matches:
+            correlations.append({
+                "type": "face_match",
+                "description": (
+                    f"تطابق بصري بين {match.image_a_platform}/{match.image_a_username} "
+                    f"و {match.image_b_platform}/{match.image_b_username}"
+                ),
+                "confidence": match.similarity,
+                "evidence": f"Perceptual hash similarity: {match.similarity:.1%}",
+            })
+
+        # ── Location correlations with profile data ──
         profile_locations = set()
         for node in investigation.nodes.values():
             loc = getattr(node, 'location', '') or ''
@@ -187,86 +140,74 @@ class ImageCorrelator:
 
         for analysis in analyses:
             if analysis.estimated_country:
-                est_loc = analysis.estimated_country.lower()
-                for prof_loc in profile_locations:
-                    if est_loc in prof_loc or prof_loc in est_loc:
-                        corr = ImageCorrelation(
-                            correlation_type="location_match",
-                            description=(
-                                f"موقع الصورة ({analysis.estimated_country}) "
-                                f"يتطابق مع الموقع المعروف من الملف الشخصي"
-                            ),
-                            confidence=analysis.location_confidence,
-                            evidence=analysis.location_evidence or "Location match between image analysis and profile data",
-                            source_image_id=analysis.image_id,
-                        )
-                        correlations.append(corr)
+                est = analysis.estimated_country.lower()
+                for prof in profile_locations:
+                    if est in prof or prof in est:
+                        correlations.append({
+                            "type": "location_match",
+                            "description": f"موقع الصورة ({analysis.estimated_country}) يتطابق مع الموقع المعروف",
+                            "confidence": analysis.location_confidence,
+                            "evidence": "; ".join(analysis.location_reasons[:3]) if analysis.location_reasons else "Location match",
+                        })
                         break
 
-        # ── 4. OCR Text Correlation ──
-        # Check if OCR text matches any usernames, emails, or domains
-        target_strings = set()
+        # ── OCR text correlations ──
+        targets = set()
         for node in investigation.nodes.values():
             if node.username:
-                target_strings.add(node.username.lower())
-            if node.email:
-                target_strings.add(node.email.lower())
-            if node.website:
-                target_strings.add(node.website.lower())
+                targets.add(node.username.lower())
+            email = getattr(node, 'email', '') or ''
+            if email:
+                targets.add(email.lower())
 
         for analysis in analyses:
             for ocr in analysis.ocr_text:
                 ocr_lower = ocr.lower()
-                for target in target_strings:
-                    if target in ocr_lower or ocr_lower in target:
-                        corr = ImageCorrelation(
-                            correlation_type="text_match",
-                            description=f"نص مستخرج من الصورة يطابق بيانات التحقيق: '{ocr}'",
-                            confidence=0.7,
-                            evidence=f"OCR text '{ocr}' matches investigation data '{target}'",
-                            source_image_id=analysis.image_id,
-                        )
-                        correlations.append(corr)
+                for target in targets:
+                    if len(target) >= 3 and (target in ocr_lower or ocr_lower in target):
+                        correlations.append({
+                            "type": "text_match",
+                            "description": f"نص مستخرج من الصورة يطابق بيانات التحقيق: '{ocr}'",
+                            "confidence": 0.7,
+                            "evidence": f"OCR '{ocr}' matches '{target}'",
+                        })
                         break
 
-        report.correlations = [c.to_dict() for c in correlations]
+        report.correlations = correlations
 
-        # ── 5. Overall Assessment ──
-        assessment_parts = []
-        if len(assets) > 0:
-            assessment_parts.append(f"تم جمع {len(assets)} صورة عامة من الحسابات المكتشفة.")
+        # ── Assessment ──
+        parts = []
+        if assets:
+            parts.append(f"تم جمع {len(assets)} صورة عامة.")
         if total_faces > 0:
-            assessment_parts.append(f"تم اكتشاف {total_faces} وجه في الصور.")
+            parts.append(f"تم اكتشاف {total_faces} وجه.")
         if hash_matches:
-            assessment_parts.append(
-                f"تم اكتشاف {len(hash_matches)} تطابق بصري بين الحسابات "
-                f"(يشير إلى احتمال أن نفس الشخص)."
+            parts.append(f"{len(hash_matches)} تطابق بصري بين الحسابات.")
+        if geo_report and geo_report.most_probable_location:
+            parts.append(
+                f"الموقع الأكثر احتمالاً: {geo_report.most_probable_location} "
+                f"({geo_report.most_probable_confidence:.0%})."
             )
         if locations:
-            assessment_parts.append(f"المواقع المقدرة: {', '.join(locations)}.")
+            parts.append(f"المواقع المقدرة: {', '.join(list(locations)[:5])}.")
         if ocr_texts:
-            assessment_parts.append(f"نصوص مستخرجة: {', '.join(ocr_texts[:5])}.")
+            parts.append(f"نصوص مستخرجة: {len(ocr_texts)} نص.")
         if gps_points:
-            assessment_parts.append(f"تم اكتشاف {len(gps_points)} إحداثيات GPS.")
+            parts.append(f"{len(gps_points)} إحداثية GPS/تقديرية.")
 
-        report.assessment = " ".join(assessment_parts) if assessment_parts else "لم يتم اكتشاف معلومات استخباراتية إضافية من الصور."
-        
-        # Confidence based on findings richness
-        confidence = 0.3  # Base
-        if hash_matches:
-            confidence += 0.2
-        if total_faces > 0:
-            confidence += 0.1
-        if locations:
-            confidence += 0.1
-        if correlations:
-            confidence += 0.1
-        if gps_points:
-            confidence += 0.1
+        report.assessment = " ".join(parts) if parts else "لم يتم اكتشاف معلومات إضافية من الصور."
+
+        confidence = 0.2
+        if hash_matches: confidence += 0.15
+        if total_faces > 0: confidence += 0.1
+        if locations: confidence += 0.15
+        if correlations: confidence += 0.1
+        if gps_points: confidence += 0.15
+        if geo_report and geo_report.most_probable_location: confidence += 0.1
         report.confidence = min(confidence, 0.95)
 
         logger.info(
-            f"Image Intelligence: {len(assets)} images, {total_faces} faces, "
+            f"Image Intel: {len(assets)} images, {total_faces} faces, "
             f"{len(hash_matches)} matches, {len(correlations)} correlations"
         )
 
